@@ -13,7 +13,7 @@ from sqlalchemy.engine import URL
 
 from .models import Base
 from ..exceptions import DatabaseError
-from ..utils.logger import get_logger
+from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
