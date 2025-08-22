@@ -276,10 +276,14 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"  # 정의되지 않은 환경변수 무시
 
 
 # Global settings instance
 settings = Settings()
+
+# Backward compatibility
+PROJECT_ROOT = settings.project_root
 
 
 def get_settings() -> Settings:
