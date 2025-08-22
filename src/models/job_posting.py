@@ -20,7 +20,8 @@ from pydantic import (
     field_validator, 
     model_validator, 
     EmailStr,
-    HttpUrl
+    HttpUrl,
+    model_serializer
 )
 
 
@@ -32,6 +33,15 @@ class JobTypeEnum(str, Enum):
     CONTRACTOR = "프리랜서"
     TEMPORARY = "임시직"
 
+class CompanyClassificationEnum(str, Enum):
+    """기업 구분명 열거형"""
+    PUBLIC = "공기업"
+    LARGE = "대기업"
+    MID = "중견기업"
+    SMALL = "중소기업"
+    STARTUP = "스타트업"
+    FOREIGN = "외국계"
+    ETC = "기타"
 
 class ExperienceLevel(str, Enum):
     """경력 수준 열거형"""
@@ -94,15 +104,37 @@ class WorkLocation(BaseModel):
 
 class CompanyData(BaseModel):
     """기업 정보 모델"""
-    name: Annotated[str, Field(min_length=1, max_length=100, description="회사명")]
-    description: Optional[Annotated[str, Field(max_length=1000)]] = Field(None, description="회사 소개")
-    industry: Optional[Annotated[str, Field(max_length=100)]] = Field(None, description="업종")
-    size: Optional[Annotated[str, Field(max_length=50)]] = Field(None, description="회사 규모")
-    website: Optional[HttpUrl] = Field(None, description="웹사이트 URL")
-    logo_url: Optional[HttpUrl] = Field(None, description="로고 이미지 URL")
-    founded_year: Optional[Annotated[int, Field(ge=1800, le=2030)]] = Field(None, description="설립연도")
-    location: Optional[WorkLocation] = Field(None, description="본사 위치")
-    
+    company_name: Annotated[str, Field(min_length=1, max_length=100, description="회사명")]
+    company_classification: Optional[CompanyClassificationEnum] = Field(None, description="기업구분명")
+    homepage: Optional[str] = Field(None, description="홈페이지 URL")
+    logo_url: Optional[str] = Field(None, description="로고 이미지 URL")
+    intro_summary: Optional[Annotated[str, Field(max_length=100)]] = Field(None, description="기업 요약")
+    intro_detail: Optional[Annotated[str, Field(max_length=1000)]] = Field(None, description="기업 상세 소개")
+    main_business: Optional[Annotated[str, Field(max_length=1000)]] = Field(None, description="주요사업")
+
+    @field_validator("homepage", "logo_url")
+    def validate_url(cls, value: Optional[str]) -> Optional[str]:
+        if value:
+            try:
+                # HttpUrl로 변환해 유효성 검사
+                url = HttpUrl(value)
+                return str(url)
+            except ValueError:
+                raise ValueError(f"Invalid URL: {value}")
+        return value
+
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        return {
+            "company_name": self.company_name,
+            "company_classification": self.company_classification,
+            "homepage": self.homepage,
+            "logo_url": self.logo_url,
+            "intro_summary": self.intro_summary,
+            "intro_detail": self.intro_detail,
+            "main_business": self.main_business,
+        }
+
     class Config:
         """Pydantic 설정"""
         use_enum_values = True
@@ -112,7 +144,7 @@ class CompanyData(BaseModel):
 class UserInput(BaseModel):
     """사용자 입력 데이터 모델"""
     job_title: Annotated[str, Field(min_length=1, max_length=100, description="채용 직무명")]
-    company_info: CompanyData = Field(..., description="회사 정보")
+    company_name: Annotated[str, Field(min_length=1, max_length=100, description="회사명")]
     requirements: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, description="필수 요구사항")
     preferred_qualifications: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, description="우대사항")
     job_type: JobTypeEnum = Field(JobTypeEnum.FULL_TIME, description="채용 형태")
