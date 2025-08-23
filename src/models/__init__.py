@@ -18,6 +18,7 @@ from .job_posting import (
     CompanyData,
     UserInput,
     ValidationResult,
+    JobPostingDrarft,
     JobPostingMetadata,
     JobPostingTemplate,
 )

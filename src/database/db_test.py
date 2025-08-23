@@ -7,12 +7,13 @@ import sys
 import os
 from pathlib import Path
 
+# try:
+#     from config.settings import PROJECT_ROOT
+#     project_root = PROJECT_ROOT
+# except ImportError:
+#     project_root = Path(__file__).parent.parent.parent
 # 프로젝트 루트를 파이썬 패스에 추가
-try:
-    from config.settings import PROJECT_ROOT
-    project_root = PROJECT_ROOT
-except ImportError:
-    project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent.parent
 
 sys.path.insert(0, str(project_root))
 
@@ -20,6 +21,7 @@ from src.database import (
     init_database, create_tables, test_db_connection, 
     db_session_scope, DataRepositoryManager
 )
+from sqlalchemy import text
 from src.database.data_loader import OpenAPIDataLoader, initialize_database_with_sample_data
 from src.utils.logging import get_logger
 
@@ -74,6 +76,30 @@ def test_repository_operations():
     try:
         with db_session_scope() as session:
             repo = DataRepositoryManager(session)
+            
+            # 0. 기존 테스트 데이터 정리 (SQL 직접 사용)
+            print("🧹 기존 테스트 데이터 정리...")
+            try:
+                # 1. 테스트 채용공고와 관련 데이터 삭제 (외래키 순서대로)
+                session.execute(text("DELETE FROM job_posting_steps WHERE job_posting_id IN (SELECT id FROM job_postings WHERE emp_seq_no = 'TEST001')"))
+                session.execute(text("DELETE FROM job_posting_positions WHERE job_posting_id IN (SELECT id FROM job_postings WHERE emp_seq_no = 'TEST001')"))
+                session.execute(text("DELETE FROM job_posting_self_intro WHERE job_posting_id IN (SELECT id FROM job_postings WHERE emp_seq_no = 'TEST001')"))
+                session.execute(text("DELETE FROM job_postings WHERE emp_seq_no = 'TEST001'"))
+                
+                # 2. 테스트 기업과 관련 데이터 삭제
+                session.execute(text("DELETE FROM company_welfare WHERE company_id IN (SELECT id FROM companies WHERE emp_co_no = 'TEST001')"))
+                session.execute(text("DELETE FROM company_history WHERE company_id IN (SELECT id FROM companies WHERE emp_co_no = 'TEST001')"))
+                session.execute(text("DELETE FROM company_talent_criteria WHERE company_id IN (SELECT id FROM companies WHERE emp_co_no = 'TEST001')"))
+                session.execute(text("DELETE FROM companies WHERE emp_co_no = 'TEST001'"))
+                
+                # 3. 변경사항 커밋
+                session.commit()
+                print("✅ 테스트 데이터 정리 완료")
+                
+            except Exception as cleanup_error:
+                print(f"⚠️  테스트 데이터 정리 중 오류 (무시하고 계속): {cleanup_error}")
+                # 정리 실패해도 테스트는 계속 진행
+                session.rollback()
             
             # 1. 직종 분류 테스트
             print("📋 직종 분류 생성 테스트...")

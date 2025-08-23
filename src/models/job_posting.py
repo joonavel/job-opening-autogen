@@ -99,7 +99,6 @@ class WorkLocation(BaseModel):
     address: Optional[Annotated[str, Field(max_length=200)]] = Field(None, description="주소")
     city: Optional[Annotated[str, Field(max_length=50)]] = Field(None, description="도시")
     country: Annotated[str, Field(max_length=50)] = Field("한국", description="국가")
-    postal_code: Optional[Annotated[str, Field(max_length=10)]] = Field(None, description="우편번호")
 
 
 class CompanyData(BaseModel):
@@ -142,7 +141,7 @@ class CompanyData(BaseModel):
 
 
 class UserInput(BaseModel):
-    """사용자 입력 데이터 모델"""
+    """사용자 입력 구조화를 위한 데이터 모델"""
     job_title: Annotated[str, Field(min_length=1, max_length=100, description="채용 직무명")]
     company_name: Annotated[str, Field(min_length=1, max_length=100, description="회사명")]
     requirements: List[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, description="필수 요구사항")
@@ -151,7 +150,7 @@ class UserInput(BaseModel):
     experience_level: ExperienceLevel = Field(ExperienceLevel.ENTRY, description="경력 수준")
     salary_info: Optional[SalaryInfo] = Field(None, description="급여 정보")
     work_location: Optional[WorkLocation] = Field(None, description="근무 위치")
-    additional_info: Dict[str, Any] = Field(default_factory=dict, description="추가 정보")
+    additional_info: Optional[List[str]] = Field(default_factory=dict, description="추가 정보")
     
     @field_validator('requirements')
     @classmethod
@@ -172,6 +171,37 @@ class ValidationResult(BaseModel):
     validator_type: Annotated[str, Field(max_length=50)] = Field(..., description="검증기 타입")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="검증 메타데이터")
 
+
+class JobPostingDrarft(BaseModel):
+    """채용공고 초안 모델
+    이 모델은 LLM이 생성하는 채용공고의 구조화된 형태를 정의합니다.
+    필수적으로 채워야 하는 필드들은 필수로 채워야 하는 필드로 표시되어 있습니다
+    선택 필드의 경우, 제공된 사용자 입력에 정보가 제시되어 있지 않은 경우 None 값으로 채우면 됩니다.
+    """
+    # === 필수 필드 ===
+    title: Annotated[str, Field(min_length=5, max_length=100)] = Field(..., description="채용공고의 제목, 필수로 채워야하는 필드")
+    company_name: Annotated[str, Field(min_length=1, max_length=100)] = Field(..., description="회사명, 필수로 채워야하는 필드") 
+    job_description: Annotated[str, Field(min_length=20, max_length=3000)] = Field(..., description="직무에 대한 설명, 필수로 채워야하는 필드")
+    requirements: List[Annotated[str, Field(max_length=200)]] = Field(..., min_length=1, description="필수 요구사항, 필수로 채워야하는 필드")
+    job_type: JobTypeEnum = Field(JobTypeEnum.FULL_TIME, description="채용 형태, 필수로 채워야하는 필드")
+    experience_level: ExperienceLevel = Field(ExperienceLevel.ENTRY, description="경력 수준, 필수로 채워야하는 필드")
+    # === 선택 필드 ===
+    preferred_qualifications: List[Annotated[str, Field(max_length=200)]] = Field(
+        default_factory=list, description="우대 사항"
+    )
+    
+    benefits: List[Annotated[str, Field(max_length=200)]] = Field(
+        default_factory=list, description="복리후생"
+    )
+    
+    salary_info: Optional[SalaryInfo] = Field(None, description="급여 정보")
+    work_location: Optional[WorkLocation] = Field(None, description="근무 위치")
+    application_deadline: Optional[date] = Field(None, description="지원 마감일")
+    contact_email: Optional[EmailStr] = Field(None, description="담당자 연락처")
+    
+    class Config:
+        """Pydantic 설정"""
+        use_enum_values = True
 
 class JobPostingMetadata(BaseModel):
     """채용공고 메타데이터 모델"""
@@ -199,9 +229,7 @@ class JobPostingTemplate(BaseModel):
     # === 필수 필드 ===
     title: Annotated[str, Field(min_length=5, max_length=100)] = Field(..., description="채용공고 제목")
     company_name: Annotated[str, Field(min_length=1, max_length=100)] = Field(..., description="회사명") 
-    job_description: Annotated[str, Field(min_length=100, max_length=3000)] = Field(..., description="직무 설명")
-    requirements: List[Annotated[str, Field(max_length=200)]] = Field(..., min_length=1, description="필수 요구사항")
-    
+    job_description: Annotated[str, Field(min_length=20, max_length=3000)] = Field(..., description="직무 설명")
     # === 선택 필드 ===
     preferred_qualifications: List[Annotated[str, Field(max_length=200)]] = Field(
         default_factory=list, description="우대 사항"
