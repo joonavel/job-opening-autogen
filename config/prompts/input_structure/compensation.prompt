@@ -1,0 +1,6 @@
+## 급여 정보:
+- 급여 타입: {type}
+- 최소 급여: {min_amount}
+- 최대 급여: {max_amount}
+- 통화: {currency}
+- 협의 가능: {is_negotiable}

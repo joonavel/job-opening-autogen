@@ -1,0 +1,10 @@
+## 직무 정보:
+- 직무명: {job_title}
+- 채용 형태: {job_type}
+- 경력 수준: {experience_level}
+
+### 필수 요구사항:
+{essential}
+
+### 우대사항:
+{preferred}
