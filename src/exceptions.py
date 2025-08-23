@@ -399,6 +399,54 @@ class CacheError(BaseJobPostingError):
         })
 
 
+class DataRetrievalError(BaseJobPostingError):
+    """데이터 검색 관련 예외"""
+    
+    def __init__(
+        self,
+        message: str,
+        source: Optional[str] = None,
+        query: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            message,
+            category=ErrorCategory.BUSINESS_LOGIC,
+            **kwargs
+        )
+        self.source = source
+        self.query = query
+        
+        if source:
+            self.details["source"] = source
+        if query:
+            self.details["query"] = query
+
+
+class DataFormattingError(BaseJobPostingError):
+    """데이터 포맷팅 관련 예외"""
+    
+    def __init__(
+        self,
+        message: str,
+        data_type: Optional[str] = None,
+        formatter_name: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            message,
+            category=ErrorCategory.BUSINESS_LOGIC,
+            **kwargs
+        )
+        self.data_type = data_type
+        self.formatter_name = formatter_name
+        
+        if data_type:
+            self.details["data_type"] = data_type
+        if formatter_name:
+            self.details["formatter_name"] = formatter_name
+
+
 # 예외 매핑 딕셔너리 (에러 코드로 예외 클래스 찾기)
 ERROR_CODE_MAPPING = {
     "VALIDATION_ERROR": ValidationError,
@@ -414,6 +462,8 @@ ERROR_CODE_MAPPING = {
     "CONTENT_MODERATION_ERROR": ContentModerationError,
     "CONFIGURATION_ERROR": ConfigurationError,
     "CACHE_ERROR": CacheError,
+    "DATA_RETRIEVAL_ERROR": DataRetrievalError,
+    "DATA_FORMATTING_ERROR": DataFormattingError,
 }
 
 
