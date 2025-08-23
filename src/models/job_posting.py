@@ -150,7 +150,7 @@ class UserInput(BaseModel):
     experience_level: ExperienceLevel = Field(ExperienceLevel.ENTRY, description="경력 수준")
     salary_info: Optional[SalaryInfo] = Field(None, description="급여 정보")
     work_location: Optional[WorkLocation] = Field(None, description="근무 위치")
-    additional_info: Optional[List[str]] = Field(default_factory=dict, description="추가 정보")
+    additional_info: Optional[List[str]] = Field(default_factory=list, description="추가 정보")
     
     @field_validator('requirements')
     @classmethod
