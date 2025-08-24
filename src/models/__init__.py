@@ -18,7 +18,7 @@ from .job_posting import (
     CompanyData,
     UserInput,
     ValidationResult,
-    JobPostingDrarft,
+    JobPostingDraft,
     JobPostingMetadata,
     JobPostingTemplate,
 )
@@ -37,6 +37,7 @@ __all__ = [
     "CompanyData",
     "UserInput",
     "ValidationResult",
+    "JobPostingDraft",
     "JobPostingMetadata", 
     "JobPostingTemplate",
 ]
