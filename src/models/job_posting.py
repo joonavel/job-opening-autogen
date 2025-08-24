@@ -172,7 +172,7 @@ class ValidationResult(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="검증 메타데이터")
 
 
-class JobPostingDrarft(BaseModel):
+class JobPostingDraft(BaseModel):
     """채용공고 초안 모델
     이 모델은 LLM이 생성하는 채용공고의 구조화된 형태를 정의합니다.
     필수적으로 채워야 하는 필드들은 필수로 채워야 하는 필드로 표시되어 있습니다

@@ -14,7 +14,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from ..models.job_posting import (
-    JobPostingDrarft, UserInput, CompanyData, 
+    JobPostingDraft, UserInput, CompanyData, 
     ValidationResult, ValidationStatus, 
     SalaryInfo, WorkLocation
 )
@@ -50,7 +50,7 @@ class JobPostingGenerator:
             "average_generation_time": 0.0
         }
     
-    def generate_job_posting(self, context: GenerationContext) -> Tuple[JobPostingDrarft, Dict[str, Any]]:
+    def generate_job_posting(self, context: GenerationContext) -> Tuple[JobPostingDraft, Dict[str, Any]]:
         """
         채용공고 초안 생성
         
@@ -80,7 +80,7 @@ class JobPostingGenerator:
             job_posting, model_name = self.llm_manager.generate_structured_output(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                output_schema=JobPostingDrarft
+                output_schema=JobPostingDraft
             )
             
             generation_time = time.time() - start_time
@@ -89,7 +89,7 @@ class JobPostingGenerator:
                 "generation_time": generation_time,
                 "generated_by": model_name
             }
-            # 생성 메타데이터는 JobPostingDrarft에 해당 필드가 없으므로 생략
+            # 생성 메타데이터는 JobPostingDraft에 해당 필드가 없으므로 생략
             
             # 통계 업데이트
             self._update_generation_stats(True, generation_time)
@@ -193,7 +193,7 @@ class JobPostingGenerator:
         
         return user_prompt
     
-    def _generate_fallback_posting(self, context: GenerationContext) -> JobPostingDrarft:
+    def _generate_fallback_posting(self, context: GenerationContext) -> JobPostingDraft:
         """LLM 실패시 템플릿 기반 Fallback 생성"""
         logger.info("템플릿 기반 채용공고 생성 시작")
         company_info = context.structured_input.get("company_info", {})
@@ -222,7 +222,7 @@ class JobPostingGenerator:
             if hasattr(location_type, 'value'):  # Enum 객체인 경우
                 location_type = location_type.value
             
-            fallback_posting = JobPostingDrarft(
+            fallback_posting = JobPostingDraft(
                 title=f"{company_info.get('company_name', '정보 없음')} {job_details.get('job_title', '정보 없음')} 채용",
                 company_name=company_info.get('company_name', '정보 없음'),
                 job_description=self._generate_fallback_description(context),
