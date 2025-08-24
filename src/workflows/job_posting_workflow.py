@@ -18,7 +18,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.message import add_messages
 
 from ..models.job_posting import (
-    JobPostingTemplate, UserInput, CompanyData, ValidationResult, ValidationStatus
+    JobPostingDraft, UserInput, CompanyData, ValidationResult, ValidationStatus
 )
 from ..database.repositories import CompanyRepository, DataRepositoryManager
 from ..database.connection import db_session_scope
@@ -27,6 +27,8 @@ from ..components.natural_language_processor import (
     get_natural_language_processor, ProcessingContext
 )
 from ..components.generator import get_job_posting_generator, GenerationContext
+from ..agents.sensitivity_validator import SensitivityValidationRequest, analyze_sensitivity_with_agent
+from ..agents.hallucination_validator import HallucinationValidationRequest, analyze_intrinsic_consistency_with_agent
 from contextlib import contextmanager
 from typing import Generator
 
@@ -55,10 +57,12 @@ class WorkflowState(TypedDict):
     """
     # === 원시 입력 데이터 ===
     raw_input: Annotated[Optional[str], "사용자의 자연어 입력"]
-    user_input: Annotated[Optional[UserInput], "구조화된 사용자 입력 데이터"]
-    company_query: Annotated[Optional[str], "기업 검색 쿼리"]
+    user_input: Annotated[Optional[UserInput], "구조화된 사용자 입력 데이터"] 
+    # === 민감성 검증 결과 ===
+    sensitivity_validation_metadata: Annotated[Optional[Dict[str, Any]], "민감성 검증 메타데이터"]
     
     # === 검색된 데이터 ===
+    company_query: Annotated[Optional[str], "기업 검색 쿼리"]
     company_data: Annotated[Optional[CompanyData], "검색된 기업 정보"]
     
     # === 환각 검증을 위한 추적 정보 ===
@@ -69,9 +73,13 @@ class WorkflowState(TypedDict):
     structured_input: Annotated[Optional[Dict[str, Any]], "구조화된 입력 데이터"]
     validation_results: Annotated[List[ValidationResult], "검증 결과"]
     structured_input_metadata: Annotated[Optional[Dict[str, Any]], "구조화된 입력 메타데이터"]
+    
     # === 생성된 결과 ===
-    job_posting_draft: Annotated[Optional[JobPostingTemplate], "생성된 채용공고 초안"]
+    job_posting_draft: Annotated[Optional[JobPostingDraft], "생성된 채용공고 초안"]
     draft_metadata: Annotated[Optional[Dict[str, Any]], "생성된 채용공고 초안 메타데이터"]
+    
+    # === 환각 검증 결과 ===
+    hallucination_validation_metadata: Annotated[Optional[Dict[str, Any]], "환각 검증 메타데이터"]
     
     # === 워크플로우 메타데이터 ===
     workflow_id: Annotated[str, "워크플로우 고유 ID"]
@@ -83,7 +91,7 @@ class WorkflowState(TypedDict):
     step_count: Annotated[int, "실행된 단계 수"]
     start_time: Annotated[datetime, "시작 시간"]
     last_updated: Annotated[datetime, "마지막 업데이트 시간"]
-    
+      
     # === 선택적 필드 ===
     debug_info: Annotated[Optional[Dict[str, Any]], "디버깅 정보"]
 
@@ -139,10 +147,47 @@ def structure_natural_language_input(state: WorkflowState) -> WorkflowState:
         
     return state
 
+def call_sensitivity_validation_agent(state: WorkflowState) -> WorkflowState:
+    """
+    1단계: 민감성 검증 에이전트 호출
+    
+    사용자 입력을 바탕으로 민감성 검증 에이전트를 호출하여 검증 결과를 반환합니다.
+    """
+    logger.info(f"워크플로우 {state['workflow_id']}: 민감성 검증 에이전트 호출 시작")
+    
+    try:
+        # 현재 단계 업데이트
+        state["current_step"] = "call_sensitivity_validation_agent"
+        state["step_count"] = state.get("step_count", 0) + 1
+        state["last_updated"] = datetime.now()
+        
+        # 구조화된 사용자 입력 확인
+        user_input = state.get("user_input")
+        if not user_input:
+            raise WorkflowError("구조화된 사용자 입력 데이터가 없습니다")
+
+        thread_id = state["workflow_id"] + "_SV"
+        
+        validated_user_input, metadata = analyze_sensitivity_with_agent(SensitivityValidationRequest(user_input=user_input), thread_id)
+        
+        
+        # 상태에 구조화된 입력 저장
+        state["user_input"] = validated_user_input
+        state["sensitivity_validation_metadata"] = metadata
+        logger.info(f"구조화된 사용자 입력 검증 및 첨삭 완료:\n{metadata['generated_by']}:\n{metadata['reasoning']}")
+        
+    except Exception as e:
+        error_msg = f"민감성 검증 에이전트 호출 중 예상치 못한 오류: {str(e)}"
+        logger.error(error_msg)
+        
+        state.setdefault("errors", []).append(error_msg)
+        state["current_step"] = "error"
+        
+    return state
 
 def retrieve_company_data(state: WorkflowState) -> WorkflowState:
     """
-    1단계: 기업 데이터 검색 및 조회 (환각 검증용 추적 정보 포함)
+    2단계: 기업 데이터 검색 및 조회 (환각 검증용 추적 정보 포함)
     
     사용자 입력의 기업 정보를 바탕으로 데이터베이스에서
     상세한 기업 정보를 검색하고 조회합니다.
@@ -326,7 +371,7 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
 
 def structure_input(state: WorkflowState) -> WorkflowState:
     """
-    2단계: 입력 데이터 구조화 및 검증
+    3단계: 입력 데이터 구조화 및 검증
     
     사용자 입력과 검색된 기업 데이터를 결합하여
     LLM 생성에 최적화된 구조화된 형태로 변환합니다.
@@ -419,7 +464,7 @@ def structure_input(state: WorkflowState) -> WorkflowState:
 
 def generate_draft(state: WorkflowState) -> WorkflowState:
     """
-    3단계: LLM을 통한 채용공고 초안 생성
+    4단계: LLM을 통한 채용공고 초안 생성
     
     구조화된 입력 데이터를 바탕으로 LLM을 호출하여
     완성된 채용공고 초안을 생성합니다.
@@ -476,6 +521,47 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
         
     return state
 
+def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
+    """
+    5단계: 환각 검증 에이전트 호출
+    
+    생성된 채용공고 초안을 바탕으로 환각 검증 에이전트를 호출하여 검증 결과를 반환합니다.
+    """
+    logger.info(f"워크플로우 {state['workflow_id']}: 환각 검증 에이전트 호출 시작")
+
+    try:
+        # 현재 단계 업데이트
+        state["current_step"] = "call_hallucination_validation_agent"
+        state["step_count"] = state.get("step_count", 0) + 1
+        state["last_updated"] = datetime.now()
+
+        # 생성된 채용공고 초안 확인
+        job_posting_draft = state.get("job_posting_draft")
+        structured_input = state.get("structured_input")
+        if not job_posting_draft:
+            raise WorkflowError("생성된 채용공고 초안이 없습니다")
+
+        thread_id = state["workflow_id"] + "_HV"
+
+        validated_job_posting, metadata = analyze_intrinsic_consistency_with_agent(
+            HallucinationValidationRequest(job_posting_draft=job_posting_draft,
+                                           structured_input=structured_input),
+            thread_id
+            )
+        
+
+        # 상태에 검증된 채용공고 초안 저장
+        state["job_posting_draft"] = validated_job_posting
+        state["hallucination_validation_metadata"] = metadata
+        
+    except Exception as e:
+        error_msg = f"환각 검증 에이전트 호출 중 예상치 못한 오류: {str(e)}"
+        logger.error(error_msg)
+        
+        state.setdefault("errors", []).append(error_msg)
+        state["current_step"] = "error"
+        
+    return state
 
 class JobPostingWorkflow:
     """
@@ -492,26 +578,32 @@ class JobPostingWorkflow:
         self._build_graph()
         
     def _build_graph(self) -> None:
-        """워크플로우 그래프 구성 (자연어 처리 단계 포함)"""
+        """워크플로우 그래프 구성 (검증 에이전트 포함)"""
         logger.info("LangGraph 워크플로우 구성 시작")
         
         # StateGraph 생성
         self.graph = StateGraph(WorkflowState)
         
-        # 노드 추가 (순서: 자연어 구조화 -> 기업 데이터 검색 -> 입력 구조화 -> 채용공고 생성)
+        # 기본 노드들 추가
         self.graph.add_node("structure_natural_language_input", structure_natural_language_input)
         self.graph.add_node("retrieve_company_data", retrieve_company_data)
         self.graph.add_node("structure_input", structure_input)
         self.graph.add_node("generate_draft", generate_draft)
         
-        # 엣지 연결 (선형 워크플로우)
+        # 검증 에이전트 노드 추가
+        self.graph.add_node("call_sensitivity_validation_agent", call_sensitivity_validation_agent)
+        self.graph.add_node("call_hallucination_validation_agent", call_hallucination_validation_agent)
+        
+        # 기본 선형 엣지 연결
         self.graph.add_edge(START, "structure_natural_language_input")
-        self.graph.add_edge("structure_natural_language_input", "retrieve_company_data")
+        self.graph.add_edge("structure_natural_language_input", "call_sensitivity_validation_agent")
+        self.graph.add_edge("call_sensitivity_validation_agent", "retrieve_company_data")
         self.graph.add_edge("retrieve_company_data", "structure_input")
         self.graph.add_edge("structure_input", "generate_draft")
-        self.graph.add_edge("generate_draft", END)
+        self.graph.add_edge("generate_draft", "call_hallucination_validation_agent")
+        self.graph.add_edge("call_hallucination_validation_agent", END)
         
-        logger.info("LangGraph 워크플로우 구성 완료 (4단계: 자연어 구조화 -> 기업 검색 -> 입력 구조화 -> 채용공고 생성)")
+        logger.info("LangGraph 워크플로우 구성 완료 (6단계: 자연어 구조화 -> 민감성 검증 -> 기업 검색 -> 입력 구조화 -> 채용공고 생성 -> 환각 검증)")
     
     def compile(self) -> None:
         """워크플로우 컴파일"""

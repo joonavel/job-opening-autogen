@@ -31,6 +31,11 @@ class SensitivityValidationRequest(BaseModel):
     """민감성 검증 요청 모델"""
     user_input: UserInput = Field(description="검증할 구조화된 사용자 입력 텍스트")
 
+class SensitivityValidationResult(BaseModel):
+    """민감성 검증 결과"""
+    user_input: Optional[UserInput] = Field(description="민감성 검증 결과를 고려하여 수정된 사용자 입력 텍스트, 개선 사항이 없다면 None 입력")
+    reasoning: str = Field(description="수정 결과에 대한 논리적인 이유")
+
 def create_sensitivity_validation_prompt() -> str:
     """민감성 검증을 위한 프롬프트 생성"""
     
@@ -81,6 +86,7 @@ def get_human_feedback(question: List[str]) -> str:
 def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread_id: str) -> tuple[UserInput, dict]:
     """Agent을 사용하여 민감성 분석 후 human feedback에 기반하여 첨삭"""
     try:
+        user_input = request.user_input
         model = "gpt-4o-mini"  # 테스트용으로 더 안정적인 모델 사용
         llm = init_chat_model(
                 model=model,
@@ -92,10 +98,9 @@ def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread
         agent_executor = create_react_agent(model=llm,
                                             prompt=system_prompt,
                                             tools=[get_human_feedback],
-                                            response_format=UserInput,
+                                            response_format=SensitivityValidationResult,
                                             checkpointer=memory,
                                             name="sensitivity_validation_agent")
-        metadata = {"thread_id": thread_id, "generated_by": model}
         # 한글 유지하면서 JSON 변환 (ensure_ascii=False)
         user_input_text = json.dumps(request.user_input.model_dump(), ensure_ascii=False, indent=2)
         config = {"configurable": {"thread_id": thread_id}}
@@ -120,7 +125,12 @@ def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread
             if structured_response is None:
                 raise ValidationError("민감성 기반 첨삭 결과를 받지 못했습니다")
             
-            return structured_response, metadata
+            metadata = {"thread_id": thread_id, "generated_by": model, "reasoning": structured_response.reasoning}
+            validated_user_input = structured_response.user_input
+            if validated_user_input is None:
+                return user_input, metadata
+            
+            return validated_user_input, metadata
         
     except Exception as e:
         logger.error(f"LLM 민감성 분석 실패: {str(e)}")
