@@ -11,8 +11,8 @@ LangGraph를 활용한 채용공고 자동생성 GenAI 서비스입니다.
 ## 🏗️ 아키텍처
 
 ```
-사용자 입력 → 데이터 검색 → 구조화 → [필수필드 체크] → 
-초안 생성 → 검증 에이전트들 → [민감성 체크] → 최종 출력
+사용자 입력(자연어) → 입력 데이터 구조화 → 민감성 검증(에이전트) →
+기업 데이터 검색 → 데이터 종합 → 초안 생성 → 환각 검증(에이전트) → 최종 출력
 ```
 
 ## 🚀 기술 스택
@@ -55,7 +55,9 @@ cp .env.example .env
 ```bash
 # 프로젝트 의존성 동기화 (가상환경 자동 생성)
 uv sync --dev
+```
 
+```bash
 # 가상환경 활성화
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate  # Windows
@@ -95,19 +97,17 @@ uv run streamlit run frontend/main.py
 - ✅ LangGraph 워크플로우
 - ✅ Human-in-the-Loop 플로우
 - ✅ 검증 에이전트 (초안검증 + 민감성검증)
-- ✅ FastAPI + Streamlit UI/UX
+- [] FastAPI + Streamlit UI/UX
 
 ### 2순위 기능 (성능 최적화)
-- ⚡ 실시간 스트리밍 응답
-- 🔄 Redis 프롬프트 캐싱
-- 🛡️ Circuit Breaker & Fallback 전략
+- [] 실시간 스트리밍 응답
+- [] Redis 프롬프트 캐싱
+- [] Circuit Breaker & Fallback 전략
 
 ## 🎛️ 주요 엔드포인트
 
 - `POST /api/v1/generate`: 채용공고 생성 요청
-- `GET /api/v1/companies/{company_id}`: 기업 정보 조회
 - `POST /api/v1/feedback`: Human-in-the-Loop 피드백 처리
-- `GET /api/v1/status/{task_id}`: 생성 작업 상태 조회
 - `GET /api/v1/stream`: 스트리밍 응답 엔드포인트
 
 ## 📁 프로젝트 구조
@@ -141,8 +141,8 @@ job-opening-autogen/
 
 ## 🛡️ 보안 및 품질
 
-- **LLM Hallucination 방지**: 참조 ID 추적 검증
-- **민감정보 처리**: 차별적 표현 자동 감지
+- **LLM Hallucination 방지**: 참조 ID 추적 검증 Agent
+- **민감정보 처리**: 민감정보 및 부적절한 표현 검증 Agent
 - **응답 지연 최소화**: 스트리밍 + 캐싱
 - **시스템 안정성**: Primary/Secondary LLM 전환
 - **보안**: 환경변수 분리, 입력 검증, 비루트 컨테이너 실행
@@ -153,8 +153,7 @@ job-opening-autogen/
 - **헬스체크**: 모든 서비스의 상태 모니터링
 - **성능**: Redis 캐시 히트율 추적
 
-## 🧪 테스트
-
+## 🧪 테스트 - 추후 추가 예정
 ```bash
 # 단위 테스트
 uv run pytest tests/unit/
@@ -173,11 +172,3 @@ uv run ruff check src/
 uv run black --check src/
 uv run mypy src/
 ```
-
-## 📝 개발 가이드
-
-프로젝트 개발 규칙과 아키텍처 가이드는 `shrimp-rules.md` 파일을 참조하세요.
-
-## 📜 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
