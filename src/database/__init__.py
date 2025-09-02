@@ -5,6 +5,7 @@
 from .connection import (
     init_database,
     create_tables,
+    drop_tables,
     get_db_session,
     db_session_scope,
     test_db_connection,
@@ -36,10 +37,15 @@ from .repositories import (
     DataRepositoryManager
 )
 
+from .fastapi_db import (
+    get_db,
+)
+
 __all__ = [
     # Connection
     'init_database',
     'create_tables',
+    'drop_tables',
     'get_db_session',
     'db_session_scope',
     'test_db_connection',
@@ -67,4 +73,7 @@ __all__ = [
     'TemplateRepository',
     'FeedbackSessionRepository',
     'DataRepositoryManager',
+    
+    # FastAPI DB
+    'get_db'
 ]

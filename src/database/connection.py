@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, Session, scoped_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import URL
 
-from .models import Base
+from .models import Base, FeedbackSession
 from ..exceptions import DatabaseError
 from ..utils.logging import get_logger
 
@@ -96,6 +96,7 @@ class DatabaseManager:
             raise DatabaseError("데이터베이스가 초기화되지 않았습니다")
         
         try:
+            Base.metadata.drop_all(bind=self._engine, tables=[FeedbackSession.__table__])
             Base.metadata.drop_all(bind=self._engine)
             logger.info("데이터베이스 테이블이 성공적으로 삭제되었습니다")
         except Exception as e:
@@ -163,6 +164,10 @@ def init_database(database_url: Optional[str] = None) -> None:
 def create_tables() -> None:
     """테이블 생성 함수"""
     db_manager.create_tables()
+
+def drop_tables() -> None:
+    """테이블 삭제 함수"""
+    db_manager.drop_tables()
 
 
 def get_db_session() -> Session:

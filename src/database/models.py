@@ -10,8 +10,7 @@ from sqlalchemy import (
     ForeignKey, JSON, Index, UniqueConstraint
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Mapped
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 import uuid
 
 Base = declarative_base()
@@ -115,7 +114,7 @@ class JobPosting(Base):
     
     # 기본 정보
     title = Column(Text, nullable=False, comment="채용제목")
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    emp_co_no = Column(String(50), ForeignKey("companies.emp_co_no"), nullable=False)
     job_category_id = Column(Integer, ForeignKey("job_categories.id"))
     
     # 채용 일정
@@ -224,58 +223,57 @@ class JobPostingTemplate(Base):
     """생성된 채용공고 템플릿 저장"""
     __tablename__ = "job_posting_templates"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    template_id = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True, index=True, comment="템플릿 고유 ID")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_id: Mapped[str] = mapped_column(String(50), default=lambda: str(uuid.uuid4()), unique=True, index=True, comment="템플릿 고유 ID")
     
     # 연관 정보
-    source_job_posting_id = Column(Integer, ForeignKey("job_postings.id"), nullable=True, comment="참조 채용공고 ID")
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, comment="대상 기업 ID")
+    source_emp_seq_no: Mapped[str] = mapped_column(String(50), ForeignKey("job_postings.emp_seq_no"), nullable=True, comment="참조 채용공고 ID")
+    source_emp_co_no: Mapped[str] = mapped_column(String(50), ForeignKey("companies.emp_co_no"), nullable=True, comment="대상 기업 ID")
     
     # 템플릿 내용
-    title = Column(Text, comment="생성된 채용공고 제목")
-    content = Column(Text, comment="생성된 채용공고 내용")
-    template_data = Column(JSON, comment="구조화된 템플릿 데이터")
+    title: Mapped[str] = mapped_column(Text, comment="생성된 채용공고 제목")
+    content: Mapped[str] = mapped_column(Text, comment="생성된 채용공고 내용")
+    template_data: Mapped[dict] = mapped_column(JSON, comment="구조화된 템플릿 데이터")
     
     # 생성 정보
-    generation_status = Column(String(50), default="draft", comment="생성 상태 (draft, validated, finalized)")
-    generation_metadata = Column(JSON, comment="생성 메타데이터 (사용된 프롬프트, 모델 등)")
+    generation_status: Mapped[str] = mapped_column(String(50), default="draft", comment="생성 상태 (draft, validated, finalized)")
+    generation_metadata: Mapped[dict] = mapped_column(JSON, comment="생성 메타데이터 (사용된 프롬프트, 모델 등)")
     
     # 검증 정보
-    validation_results = Column(JSON, comment="검증 결과")
-    sensitivity_check_results = Column(JSON, comment="민감성 검사 결과")
+    validation_metadata: Mapped[dict] = mapped_column(JSON, comment="검증 메타데이터")
     
     # 메타데이터
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     
     # 관계
-    feedback_sessions: Mapped[List["FeedbackSession"]] = relationship("FeedbackSession", back_populates="template")
+    # feedback_sessions: Mapped[List["FeedbackSession"]] = relationship("FeedbackSession", cascade="all, delete-orphan", back_populates="template")
 
 
 class FeedbackSession(Base):
     """Human-in-the-Loop 피드백 세션"""
     __tablename__ = "feedback_sessions"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True, index=True, comment="세션 고유 ID")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(50), default=str(uuid.uuid4()), unique=True, index=True, comment="세션 고유 ID")
     
     # 연관 템플릿
-    template_id = Column(Integer, ForeignKey("job_posting_templates.id"), nullable=False, comment="관련 템플릿 ID")
+    template_id: Mapped[str] = mapped_column(String(50), nullable=False, comment="관련 템플릿 ID")
     
     # 세션 정보
-    session_type = Column(String(50), comment="피드백 유형 (missing_fields, sensitivity_detected, quality_review)")
-    status = Column(String(50), default="pending", comment="세션 상태 (pending, completed, cancelled)")
+    session_type: Mapped[str] = mapped_column(String(50), comment="피드백 유형 (missing_fields, sensitivity_detected, quality_review)")
+    status: Mapped[str] = mapped_column(String(50), default="pending", comment="세션 상태 (pending, completed, cancelled)")
     
     # 피드백 데이터
-    feedback_request = Column(JSON, comment="피드백 요청 데이터")
-    user_feedback = Column(JSON, comment="사용자 피드백")
+    feedback_request: Mapped[List[str]] = mapped_column(JSON, comment="피드백 요청 데이터")
+    user_feedback: Mapped[List[str]] = mapped_column(JSON, comment="사용자 피드백")
     
     # 메타데이터
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    completed_at = Column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     
     # 관계
-    template: Mapped["JobPostingTemplate"] = relationship("JobPostingTemplate", back_populates="feedback_sessions")
+    # template: Mapped["JobPostingTemplate"] = relationship("JobPostingTemplate", cascade="all, delete-orphan", back_populates="feedback_sessions")
 
 
 # 검색 및 추적을 위한 인덱스 생성

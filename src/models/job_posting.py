@@ -8,11 +8,11 @@
 - ValidationResult: 검증 결과 모델
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any, Union, Annotated
 from typing_extensions import Self
-from uuid import UUID, uuid4
+import uuid
 
 from pydantic import (
     BaseModel, 
@@ -205,12 +205,12 @@ class JobPostingDraft(BaseModel):
 
 class JobPostingMetadata(BaseModel):
     """채용공고 메타데이터 모델"""
-    id: UUID = Field(default_factory=uuid4, description="고유 식별자")
-    created_at: datetime = Field(default_factory=datetime.now, description="생성 시각")
-    updated_at: datetime = Field(default_factory=datetime.now, description="수정 시각")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="고유 식별자")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="생성 시각")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="수정 시각")
     created_by: Optional[str] = Field(None, description="생성자")
     version: Annotated[int, Field(ge=1)] = Field(1, description="버전")
-    status: ValidationStatus = Field(ValidationStatus.PENDING, description="현재 상태")
+    status: ValidationStatus = Field(ValidationStatus.PENDING, description="채용공고 상태")
     tags: List[str] = Field(default_factory=list, description="태그 목록")
     
     class Config:

@@ -53,7 +53,7 @@ class OpenAPIDataLoader:
                 existing_company = repo_manager.companies.get_by_emp_co_no(company_data['emp_co_no'])
                 if existing_company:
                     logger.info(f"기업이 이미 존재합니다: {company_data['emp_co_no']}")
-                    return existing_company.id
+                    return existing_company.emp_co_no
                 
                 company = repo_manager.companies.create_company(company_data)
                 
@@ -80,14 +80,14 @@ class OpenAPIDataLoader:
                 
                 repo_manager.commit()
                 logger.info(f"기업 데이터 로드 완료: {company_data['emp_co_no']}")
-                return company.id
+                return company.emp_co_no
                 
         except Exception as e:
             logger.error(f"기업 데이터 로드 실패: {e}")
             return None
     
     @staticmethod
-    def load_job_posting_data(job_posting_detail_data: Dict[str, Any], company_id: Optional[int] = None) -> Optional[int]:
+    def load_job_posting_data(job_posting_detail_data: Dict[str, Any], emp_co_no: Optional[str] = None) -> Optional[int]:
         """채용공고 상세 데이터를 데이터베이스에 로드"""
         try:
             root_data = job_posting_detail_data.get('dhsOpenEmpInfoDetailRoot', {})
@@ -109,7 +109,7 @@ class OpenAPIDataLoader:
             posting_data = {
                 'emp_seq_no': root_data.get('empSeqno'),
                 'title': root_data.get('empWantedTitle'),
-                'company_id': company_id,
+                'emp_co_no': emp_co_no,
                 'job_category_id': job_category_id,
                 'start_date': OpenAPIDataLoader.parse_date(root_data.get('empWantedStdt')),
                 'end_date': OpenAPIDataLoader.parse_date(root_data.get('empWantedEndt')),
@@ -213,9 +213,9 @@ class OpenAPIDataLoader:
         }
         
         # 기업 데이터 로드
-        company_id = OpenAPIDataLoader.load_company_data(sample_company)
+        emp_co_no = OpenAPIDataLoader.load_company_data(sample_company)
         
-        if company_id:
+        if emp_co_no:
             # 샘플 채용공고 데이터
             sample_job_posting = {
                 'dhsOpenEmpInfoDetailRoot': {
@@ -261,14 +261,14 @@ class OpenAPIDataLoader:
             }
             
             # 채용공고 데이터 로드
-            OpenAPIDataLoader.load_job_posting_data(sample_job_posting, company_id)
+            OpenAPIDataLoader.load_job_posting_data(sample_job_posting, emp_co_no)
         
         logger.info("샘플 데이터 로드가 완료되었습니다.")
 
 
 def initialize_database_with_sample_data():
     """데이터베이스 초기화 및 샘플 데이터 로드"""
-    from .connection import init_database, create_tables, test_db_connection
+    from .connection import init_database, create_tables, test_db_connection, drop_tables
     
     try:
         # 데이터베이스 연결 초기화
@@ -278,6 +278,10 @@ def initialize_database_with_sample_data():
         # 연결 테스트
         if not test_db_connection():
             raise Exception("데이터베이스 연결 테스트 실패")
+        
+        # 기존 테이블 삭제
+        drop_tables()
+        logger.info("데이터베이스 테이블이 삭제되었습니다.")
         
         # 테이블 생성
         create_tables()
