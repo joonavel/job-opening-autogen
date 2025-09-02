@@ -118,7 +118,7 @@ class HumanLoopSettings(BaseSettings):
     """Human-in-the-Loop 관련 설정"""
     
     session_timeout: int = Field(
-        default=3600,
+        default=300,
         description="피드백 세션 타임아웃 (초)"
     )
     max_retry_count: int = Field(
