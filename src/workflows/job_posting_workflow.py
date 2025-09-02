@@ -84,6 +84,7 @@ class WorkflowState(TypedDict):
     # === 워크플로우 메타데이터 ===
     workflow_id: Annotated[str, "워크플로우 고유 ID"]
     current_step: Annotated[str, "현재 단계"]
+    status: Annotated[str, "현재 상태"]
     errors: Annotated[List[str], "발생한 오류들"]
     warnings: Annotated[List[str], "경고 메시지들"]
     
@@ -111,6 +112,7 @@ def structure_natural_language_input(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "structure_natural_language_input"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
         
@@ -144,6 +146,7 @@ def structure_natural_language_input(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
+        state["status"] = "error"
         
     return state
 
@@ -158,6 +161,7 @@ def call_sensitivity_validation_agent(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "call_sensitivity_validation_agent"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
         
@@ -166,11 +170,13 @@ def call_sensitivity_validation_agent(state: WorkflowState) -> WorkflowState:
         if not user_input:
             raise WorkflowError("구조화된 사용자 입력 데이터가 없습니다")
 
-        thread_id = state["workflow_id"] + "_SV"
+        thread_id = state["workflow_id"]
         
-        validated_user_input, metadata = analyze_sensitivity_with_agent(SensitivityValidationRequest(user_input=user_input), thread_id)
+        result = analyze_sensitivity_with_agent(SensitivityValidationRequest(user_input=user_input), thread_id)
+        if not result or not isinstance(result, tuple) or len(result) != 2:
+            raise WorkflowError(f"민감성 검증 에이전트 호출 결과 형식이 tuple이 아닙니다: {type(result)}")
         
-        
+        validated_user_input, metadata = result
         # 상태에 구조화된 입력 저장
         state["user_input"] = validated_user_input
         state["sensitivity_validation_metadata"] = metadata
@@ -182,6 +188,7 @@ def call_sensitivity_validation_agent(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
+        state["status"] = "error"
         
     return state
 
@@ -198,6 +205,7 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "retrieve_company_data"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
         
@@ -358,7 +366,7 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
-        
+        state["status"] = "error"
         # 에러 상황도 추적
         state["data_source_tracking"] = {
             "error": str(e),
@@ -381,6 +389,7 @@ def structure_input(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "structure_input"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
         
@@ -458,7 +467,7 @@ def structure_input(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
-        
+        state["status"] = "error"
     return state
 
 
@@ -474,6 +483,7 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "generate_draft"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
         
@@ -504,7 +514,11 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
         )
         
         # LLM을 통한 채용공고 생성
-        job_posting, metadata = generator.generate_job_posting(generation_context)
+        result = generator.generate_job_posting(generation_context)
+        if not result or not isinstance(result, tuple) or len(result) != 2:
+            raise WorkflowError(f"채용공고 생성 에이전트 호출 결과 형식이 tuple이 아닙니다: {type(result)}")
+        
+        job_posting, metadata = result
         
         state["job_posting_draft"] = job_posting
         state["draft_metadata"] = metadata
@@ -518,7 +532,7 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
-        
+        state["status"] = "error"
     return state
 
 def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
@@ -532,6 +546,7 @@ def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
     try:
         # 현재 단계 업데이트
         state["current_step"] = "call_hallucination_validation_agent"
+        state["status"] = "running"
         state["step_count"] = state.get("step_count", 0) + 1
         state["last_updated"] = datetime.now()
 
@@ -543,16 +558,21 @@ def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
 
         thread_id = state["workflow_id"] + "_HV"
 
-        validated_job_posting, metadata = analyze_intrinsic_consistency_with_agent(
+        result = analyze_intrinsic_consistency_with_agent(
             HallucinationValidationRequest(job_posting_draft=job_posting_draft,
                                            structured_input=structured_input),
             thread_id
             )
+        if not result or not isinstance(result, tuple) or len(result) != 2:
+            raise WorkflowError(f"환각 검증 에이전트 호출 결과 형식이 tuple이 아닙니다: {type(result)}")
+        
+        validated_job_posting, metadata = result
         
 
         # 상태에 검증된 채용공고 초안 저장
         state["job_posting_draft"] = validated_job_posting
         state["hallucination_validation_metadata"] = metadata
+        state["status"] = "completed"
         
     except Exception as e:
         error_msg = f"환각 검증 에이전트 호출 중 예상치 못한 오류: {str(e)}"
@@ -560,7 +580,7 @@ def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
         
         state.setdefault("errors", []).append(error_msg)
         state["current_step"] = "error"
-        
+        state["status"] = "error"
     return state
 
 class JobPostingWorkflow:
@@ -570,11 +590,11 @@ class JobPostingWorkflow:
     워크플로우 생성, 컴파일, 실행을 담당합니다.
     """
     
-    def __init__(self):
+    def __init__(self, checkpointer: MemorySaver = None):
         """워크플로우 초기화"""
         self.graph = None
         self.compiled_workflow = None
-        self.checkpointer = MemorySaver()
+        self.checkpointer = checkpointer if checkpointer else MemorySaver()
         self._build_graph()
         
     def _build_graph(self) -> None:
@@ -693,21 +713,114 @@ class JobPostingWorkflow:
             error_msg = f"워크플로우 실행 실패: {str(e)}"
             logger.error(error_msg)
             raise WorkflowError(error_msg)
-  
+        
     def get_workflow_state(self, workflow_id: str) -> Optional[Dict[str, Any]]:
         """워크플로우 상태 조회 """
         saved_state = self.checkpointer.get(config={"configurable": {"thread_id": workflow_id}})
         if saved_state:
             return saved_state
-
+        
+            
+class CompanyRetrievalWorkflow(JobPostingWorkflow):
+    """기업의 데이터 검색 단계까지 진행하는 워크플로우 입니다.
+    """
+    def __init__(self):
+        super().__init__()
+        self.graph = None
+        self.compiled_workflow = None
+        self.checkpointer = MemorySaver()
+        self._build_graph()
+        
+    def _build_graph(self) -> None:
+        """워크플로우 그래프 구성 (기업 데이터 검색 단계까지 진행)"""
+        logger.info("LangGraph 워크플로우 구성 시작")
+        
+        # StateGraph 생성
+        self.graph = StateGraph(WorkflowState)
+        
+        # 기본 노드들 추가
+        self.graph.add_node("structure_natural_language_input", structure_natural_language_input)
+        self.graph.add_node("retrieve_company_data", retrieve_company_data)
+        
+        # 기본 선형 엣지 연결
+        self.graph.add_edge(START, "structure_natural_language_input")
+        self.graph.add_edge("structure_natural_language_input", "retrieve_company_data")
+        self.graph.add_edge("retrieve_company_data", END)
+  
+    def run(self,  
+           user_input: UserInput = None, 
+           workflow_id: str = None) -> Dict[str, Any]:
+        """
+        워크플로우 실행 (구조화된 입력만만 지원)
+        """
+        if not user_input:
+            raise WorkflowError("구조화된 사용자 입력 중 하나는 반드시 제공해야 합니다")
+            
+        if not self.compiled_workflow:
+            self.compile()
+            
+        if not workflow_id:
+            workflow_id = f"workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+        logger.info(f"워크플로우 실행 시작: {workflow_id}")
+        
+        # 초기 상태 설정
+        initial_state: WorkflowState = {
+            "user_input": user_input,
+            "workflow_id": workflow_id,
+            "current_step": "initialized",
+            "step_count": 0,
+            "start_time": datetime.now(),
+            "last_updated": datetime.now(),
+            "errors": [],
+            "warnings": [],
+            "validation_results": [],
+        }
+        
+        try:
+            # 워크플로우 실행
+            logger.info(f"입력 타입: {'구조화된 데이터'}")
+            
+            # 스트리밍 실행으로 단계별 진행 상황 추적
+            final_state = None
+            for state in self.compiled_workflow.stream(initial_state, config={"configurable": {"thread_id": workflow_id}}):
+                current_step = list(state.keys())[0]
+                logger.info(f"단계 완료: {current_step}")
+                final_state = state.get(current_step, None)
+                
+            if not final_state:
+                raise WorkflowError("워크플로우 실행 결과를 받지 못했습니다")
+            logger.info(f"워크플로우 실행 결과: {final_state}")
+            # 실행 결과 요약 로깅
+            if final_state.get("company_data"):
+                company_data = final_state["company_data"]
+                return company_data
+            else:
+                raise WorkflowError("기업 데이터를 검색하지 못했습니다")
+            
+        except Exception as e:
+            error_msg = f"워크플로우 실행 실패: {str(e)}"
+            logger.error(error_msg)
+            raise WorkflowError(error_msg)
+        
 
 # 전역 워크플로우 인스턴스 (싱글톤 패턴)
 _workflow_instance = None
 
-def get_workflow() -> JobPostingWorkflow:
+def get_workflow(checkpointer: MemorySaver = None) -> JobPostingWorkflow:
     """워크플로우 인스턴스 반환 (싱글톤)"""
     global _workflow_instance
     if _workflow_instance is None:
-        _workflow_instance = JobPostingWorkflow()
+        _workflow_instance = JobPostingWorkflow(checkpointer)
         _workflow_instance.compile()
     return _workflow_instance
+
+_company_retrieval_workflow_instance = None
+
+def get_company_retrieval_workflow() -> CompanyRetrievalWorkflow:
+    """기업 데이터 검색 워크플로우 인스턴스 반환 (싱글톤)"""
+    global _company_retrieval_workflow_instance
+    if _company_retrieval_workflow_instance is None:
+        _company_retrieval_workflow_instance = CompanyRetrievalWorkflow()
+        _company_retrieval_workflow_instance.compile()
+    return _company_retrieval_workflow_instance
