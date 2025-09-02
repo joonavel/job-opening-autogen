@@ -13,6 +13,7 @@ import logging
 import json
 from typing import Dict, Any, List, Literal, Optional, Tuple
 from datetime import datetime
+import time
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -59,13 +60,13 @@ def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input:
 제목: {job_posting.title}
 회사명: {job_posting.company_name}
 직무 설명: {job_posting.job_description}
-필수 요구사항: {', '.join(job_posting.requirements) if hasattr(job_posting, 'requirements') else 'N/A'}
-우대 사항: {', '.join(job_posting.preferred_qualifications)}
+필수 요구사항: {', '.join(job_posting.requirements or [])}
+우대 사항: {', '.join(job_posting.preferred_qualifications or [])}
 채용 형태: {job_posting.job_type}
 경력 수준: {job_posting.experience_level}
 급여 정보: {job_posting.salary_info.model_dump() if job_posting.salary_info else 'N/A'}
 근무 위치: {job_posting.work_location.model_dump() if job_posting.work_location else 'N/A'}
-복리후생: {', '.join(job_posting.benefits)}
+복리후생: {', '.join(job_posting.benefits or [])}
 지원 마감일: {job_posting.application_deadline}
 담당자 연락처: {job_posting.contact_email}
 
@@ -94,6 +95,7 @@ def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input:
 
 def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationRequest, thread_id: str) -> Tuple[JobPostingDraft, Dict[str, Any]]:
     """내재적 일관성 분석"""
+    start_time = time.time()
     job_posting = request.job_posting_draft
     user_input = request.structured_input
     try:
@@ -112,13 +114,14 @@ def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationReq
                                             response_format=IntrinsicAnalysisResult,
                                             checkpointer=memory,
                                             name="hallucination_validation_agent")
-        metadata = {"thread_id": thread_id, "generated_by": model}
         config = {"configurable": {"thread_id": thread_id}}
         
         response = agent_executor.invoke({"messages": [{"role": "user", "content": user_prompt}]},
                                         config=config,
                                         stream_mode="values")
         structured_response = response.get("structured_response", None)
+        metadata = {"thread_id": thread_id, "generated_by": model, "generation_time": time.time() - start_time, "reasoning": structured_response.reasoning}
+        
         if structured_response is None:
             raise ValidationError("환각 검증 결과를 받지 못했습니다")
         job_posting_draft = structured_response.job_posting_draft
@@ -130,7 +133,7 @@ def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationReq
         
     except Exception as e:
         logger.error(f"내재적 분석 실패: {str(e)}")
-        metadata = {"error": str(e)}
+        metadata = {"error": str(e), "generation_time": time.time() - start_time, "reasoning": "환각 검증 실패"}
         # 입력된 JobPostingDraft 반환 (보수적 접근)
         return job_posting, metadata
 

@@ -100,10 +100,13 @@ class JobPostingGenerator:
         except LLMError as e:
             logger.error(f"LLM 채용공고 생성 실패: {str(e)}")
             self._update_generation_stats(False, time.time() - start_time)
-            
+            metadata = {
+                "generation_time": time.time() - start_time,
+                "generated_by": "fallback"
+            }
             # Fallback: 템플릿 기반 생성
             logger.info("템플릿 기반 Fallback 생성 시도")
-            return self._generate_fallback_posting(context)
+            return self._generate_fallback_posting(context), metadata
     
     def _build_user_prompt(self, context: GenerationContext) -> str:
         """사용자 프롬프트 구성"""
@@ -177,7 +180,7 @@ class JobPostingGenerator:
             
         if "additional_info" in context.structured_input:
             additional_info = context.structured_input.get("additional_info", [])
-            additional_info_text = "\n".join(f'- {info}' for info in additional_info)
+            additional_info_text = "\n".join(f'- {info}' for info in additional_info or [])
             additional_text = get_additional_info_prompt().format(
                 additional_info=additional_info_text
             )

@@ -81,27 +81,31 @@ class NaturalLanguageProcessor:
                 output_schema=UserInput
             )
             
-            processing_time = time.time() - start_time
+            generation_time = time.time() - start_time
             metadata = {
-                "processing_time": processing_time,
+                "generation_time": generation_time,
                 "generated_by": model_name
             }
             # 후처리 및 검증
             validated_input = self._post_process_structured_input(structured_input, context)
             
             # 통계 업데이트
-            self._update_processing_stats(True, processing_time)
+            self._update_processing_stats(True, generation_time)
             
-            logger.info(f"자연어 입력 구조화 완료 ({processing_time:.2f}초)")
+            logger.info(f"자연어 입력 구조화 완료 ({generation_time:.2f}초)")
             return validated_input, metadata
             
         except LLMError as e:
             logger.error(f"LLM 자연어 처리 실패: {str(e)}")
-            self._update_processing_stats(False, time.time() - start_time)
+            self._update_processing_stats(False, generation_time)
+            metadata = {
+                "generation_time": generation_time,
+                "generated_by": "fallback"
+            }
             
             # Fallback: 규칙 기반 처리
             logger.info("규칙 기반 Fallback 처리 시도")
-            return self._rule_based_fallback_processing(context)
+            return self._rule_based_fallback_processing(context), metadata
     
     def _build_user_prompt(self, context: ProcessingContext) -> str:
         """사용자 프롬프트 구성"""
