@@ -8,6 +8,8 @@
 import logging
 import uuid
 import json
+import time
+import requests
 from typing import Dict, Any, List, Literal, Optional, Annotated
 from datetime import datetime
 
@@ -25,7 +27,7 @@ from ..exceptions import ValidationError
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-
+API_BASE_URL = "http://localhost:8080/api/v1"
 
 class SensitivityValidationRequest(BaseModel):
     """민감성 검증 요청 모델"""
@@ -34,7 +36,7 @@ class SensitivityValidationRequest(BaseModel):
 class SensitivityValidationResult(BaseModel):
     """민감성 검증 결과"""
     user_input: Optional[UserInput] = Field(description="민감성 검증 결과를 고려하여 수정된 사용자 입력 텍스트, 개선 사항이 없다면 None 입력")
-    reasoning: str = Field(description="수정 결과에 대한 논리적인 이유")
+    reasoning: str = Field(description="수정 결과에 대한 논리적인 이유, 수정 및 개선 사항이 없다면 '문제 없음' 입력")
 
 def create_sensitivity_validation_prompt() -> str:
     """민감성 검증을 위한 프롬프트 생성"""
@@ -85,6 +87,7 @@ def get_human_feedback(question: List[str]) -> str:
 
 def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread_id: str) -> tuple[UserInput, dict]:
     """Agent을 사용하여 민감성 분석 후 human feedback에 기반하여 첨삭"""
+    start_time = time.time()
     try:
         user_input = request.user_input
         model = "gpt-4o-mini"  # 테스트용으로 더 안정적인 모델 사용
@@ -109,13 +112,24 @@ def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread
                                         config=config,
                                         interrupt_after=["tools"],
                                         stream_mode="values")
+        if "structured_response" in response:
+            structured_response = response["structured_response"]
+            metadata = {"thread_id": thread_id, "generated_by": model, "reasoning": structured_response.reasoning, "generation_time": time.time() - start_time}
+            validated_user_input = structured_response.user_input
+            if validated_user_input is None:
+                return user_input, metadata
+            
+            return validated_user_input, metadata
+        logger.info(f"민감성 검증 중간 결과: {response}")
+        
         cnt = 0
         while "structured_response" not in response:
             cnt += 1
             questions = response['__interrupt__'][0].value['question']
-            human_feedbacks = []
-            for question in questions:
-                human_feedbacks.append(input(f"민감성 오류 발생!\n{question}\n\n 피드백: "))
+            
+            # API를 통한 Human-in-the-Loop 피드백 처리
+            human_feedbacks = get_human_feedback_via_api(questions, thread_id)
+            
             qa_pairs = [f"Q.{q}\nA.{hf}" for q, hf in zip(questions, human_feedbacks)]
             response = agent_executor.invoke(Command(resume='\n\n'.join(qa_pairs)), config=config)
             if cnt > 5:
@@ -125,7 +139,7 @@ def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread
             if structured_response is None:
                 raise ValidationError("민감성 기반 첨삭 결과를 받지 못했습니다")
             
-            metadata = {"thread_id": thread_id, "generated_by": model, "reasoning": structured_response.reasoning}
+            metadata = {"thread_id": thread_id, "generated_by": model, "reasoning": structured_response.reasoning, "generation_time": time.time() - start_time}
             validated_user_input = structured_response.user_input
             if validated_user_input is None:
                 return user_input, metadata
@@ -136,212 +150,93 @@ def analyze_sensitivity_with_agent(request: SensitivityValidationRequest, thread
         logger.error(f"LLM 민감성 분석 실패: {str(e)}")
         raise ValidationError(f"민감성 분석 중 오류 발생: {str(e)}")
 
-# def call_sensitivity_validation_agent(state: ValidationAgentState) -> Command[Literal["route_decision", "__end__"]]:
-#     """
-#     민감성 검증 에이전트 노드
+
+def get_human_feedback_via_api(questions: List[str], thread_id: str) -> List[str]:
+    """
+    API를 통한 Human-in-the-Loop 피드백 처리
     
-#     사용자 입력을 분석하여 민감하거나 부적절한 내용을 감지하고,
-#     결과에 따라 다음 액션을 결정합니다.
-#     """
-#     logger.info(f"민감성 검증 에이전트 시작: {state.workflow_id}")
-    
-#     try:
-#         # 검증 시도 횟수 증가
-#         state.increment_attempts()
+    Args:
+        questions: 사용자에게 물어볼 질문들
+        thread_id: 워크플로우 thread ID
         
-#         # 사용자 입력 확인
-#         if not state.original_input:
-#             error_msg = "민감성 검증을 위한 사용자 입력이 없습니다"
-#             logger.error(error_msg)
-#             return Command(
-#                 goto=END,
-#                 update={
-#                     "agent_decision": ValidationAgentDecision.FAIL,
-#                     "feedback_for_user": [error_msg]
-#                 }
-#             )
+    Returns:
+        사용자가 제공한 답변들
+    """
+    try:
+        # 1. 피드백 세션 생성
+        logger.info(f"Creating feedback session for thread: {thread_id}")
+        logger.info(f"API_BASE_URL: {API_BASE_URL}")
         
-#         # 민감성 검증 요청 생성
-#         validation_request = SensitivityValidationRequest(
-#             user_input=state.original_input,
-#             context_metadata=state.metadata,
-#             validation_level="standard"  # 기본값, 설정에서 변경 가능
-#         )
+        session_response = requests.post(
+            f"{API_BASE_URL}/feedback/sessions",
+            json={
+                "session_type": "sensitivity_detected",
+                "template_id": str(uuid.uuid4()),
+                "feedback_request": {
+                    "questions": questions,  # "question" → "questions"로 수정
+                    "thread_id": thread_id,
+                }
+            },
+            timeout=30
+        )
         
-#         # LLM을 통한 민감성 분석
-#         logger.info("LLM 기반 민감성 분석 시작")
-#         analysis_result = analyze_sensitivity_with_llm(validation_request)
+        if session_response.status_code != 200:
+            raise ValidationError(f"피드백 세션 생성 실패: {session_response.text}")
         
-#         # 분석 결과 처리
-#         sensitivity_result = process_llm_analysis(analysis_result, validation_request)
+        session_data = session_response.json()
+        session_id = session_data["session_id"]
         
-#         # 결정 로직
-#         if sensitivity_result.is_sensitive:
-#             if sensitivity_result.overall_risk_score >= 7.0:
-#                 # 심각한 민감성 문제 - 사람의 검토 필요
-#                 decision = ValidationAgentDecision.HUMAN_REVIEW
-#                 feedback = [
-#                     f"심각한 민감성 문제가 감지되었습니다 (위험도: {sensitivity_result.overall_risk_score:.1f}/10)",
-#                     "사람의 검토가 필요합니다."
-#                 ]
+        logger.info(f"Feedback session created: {session_id}")
+        
+        # 2. 사용자 응답 대기 (polling)
+        max_wait_time = settings.human_loop.session_timeout
+        poll_interval = 2  # 2초마다 체크
+        waited_time = 0
+        
+        while waited_time < max_wait_time:
+            logger.info(f"Waiting for user feedback... ({waited_time}s/{max_wait_time}s)")
+            
+            status_response = requests.get(
+                f"{API_BASE_URL}/feedback/sessions/{session_id}",
+                timeout=10
+            )
+            
+            if status_response.status_code != 200:
+                raise ValidationError(f"피드백 세션 조회 실패: {status_response.text}")
+            
+            session_status = status_response.json()
+            
+            if session_status["status"] == "completed":
+                # 사용자 피드백 받음
+                user_feedback = session_status.get("user_feedback", [])
                 
-#             elif sensitivity_result.requires_human_review or state.is_max_attempts_reached():
-#                 # 사람의 검토 필요하거나 최대 시도 횟수 도달
-#                 decision = ValidationAgentDecision.HUMAN_REVIEW
-#                 feedback = ["민감성 문제로 인해 사람의 검토가 필요합니다."]
+
+                if not user_feedback:
+                    # 구체적인 응답이 없으면 기본 응답 처리
+                    user_feedback = ["삭제해주세요"] * len(questions)
                 
-#             else:
-#                 # 재시도 가능한 민감성 문제
-#                 decision = ValidationAgentDecision.RETRY_WITH_FEEDBACK
-#                 feedback = []
-#                 for issue in sensitivity_result.detected_issues:
-#                     feedback.append(f"문제: {issue.explanation}")
-#                     feedback.append(f"제안: {issue.suggestion}")
-                    
-#         else:
-#             # 민감성 문제 없음 - 다음 단계로 진행
-#             decision = ValidationAgentDecision.PROCEED
-#             feedback = ["민감성 검증 통과"]
-        
-#         logger.info(f"민감성 검증 완료: {decision}, 위험도 {sensitivity_result.overall_risk_score}")
-        
-#         return Command(
-#             goto="route_decision",
-#             update={
-#                 "validation_step": "sensitivity_completed",
-#                 "sensitivity_result": sensitivity_result,
-#                 "agent_decision": decision,
-#                 "feedback_for_user": feedback,
-#                 "updated_at": datetime.now()
-#             }
-#         )
-        
-#     except Exception as e:
-#         error_msg = f"민감성 검증 중 오류 발생: {str(e)}"
-#         logger.error(error_msg, exc_info=True)
-        
-#         return Command(
-#             goto=END,
-#             update={
-#                 "agent_decision": ValidationAgentDecision.FAIL,
-#                 "feedback_for_user": [error_msg],
-#                 "updated_at": datetime.now()
-#             }
-#         )
-
-
-# def route_sensitivity_decision(state: ValidationAgentState) -> Literal["sensitivity_validation_agent", "human_review_required", "proceed_to_next", "__end__"]:
-#     """
-#     민감성 검증 결과에 따른 라우팅 결정
-    
-#     에이전트의 결정에 따라 다음 노드로 라우팅합니다:
-#     - PROCEED: 다음 검증 단계로 진행
-#     - RETRY_WITH_FEEDBACK: 피드백과 함께 재시도 (Human-in-the-Loop)
-#     - HUMAN_REVIEW: 사람의 검토 필요
-#     - FAIL: 검증 실패로 종료
-#     """
-#     decision = state.agent_decision
-    
-#     logger.info(f"민감성 검증 라우팅 결정: {decision}")
-    
-#     if decision == ValidationAgentDecision.PROCEED:
-#         return "proceed_to_next"
-#     elif decision == ValidationAgentDecision.RETRY_WITH_FEEDBACK:
-#         return "human_review_required"  # Human-in-the-Loop으로 이동
-#     elif decision == ValidationAgentDecision.HUMAN_REVIEW:
-#         return "human_review_required"
-#     elif decision == ValidationAgentDecision.FAIL:
-#         return END
-#     else:
-#         logger.warning(f"알 수 없는 결정: {decision}, 기본값으로 진행")
-#         return "proceed_to_next"
-
-
-# class SensitivityValidatorWorkflow:
-#     """민감성 검증 에이전트 워크플로우 관리 클래스"""
-    
-#     def __init__(self):
-#         self.graph = None
-#         self.compiled_workflow = None
-#         self._build_graph()
-    
-#     def _build_graph(self):
-#         """워크플로우 그래프 구성"""
-#         logger.info("민감성 검증 워크플로우 구성 시작")
-        
-#         self.graph = StateGraph(ValidationAgentState)
-        
-#         # 노드 추가
-#         self.graph.add_node("sensitivity_validation_agent", sensitivity_validation_agent)
-#         self.graph.add_node("route_decision", lambda state: state)  # 라우팅 전용 노드
-        
-#         # 엣지 및 조건부 엣지 추가
-#         self.graph.add_edge(START, "sensitivity_validation_agent")
-#         self.graph.add_conditional_edges(
-#             "route_decision",
-#             route_sensitivity_decision,
-#             {
-#                 "sensitivity_validation_agent": "sensitivity_validation_agent",  # 재시도
-#                 "human_review_required": END,  # Human-in-the-Loop으로 이동 (다른 워크플로우에서 처리)
-#                 "proceed_to_next": END,        # 다음 검증 단계로 (다른 워크플로우에서 처리)
-#                 END: END                       # 종료
-#             }
-#         )
-        
-#         logger.info("민감성 검증 워크플로우 구성 완료")
-    
-#     def compile(self):
-#         """워크플로우 컴파일"""
-#         if not self.graph:
-#             raise ValidationError("그래프가 구성되지 않았습니다")
-        
-#         logger.info("민감성 검증 워크플로우 컴파일 시작")
-#         self.compiled_workflow = self.graph.compile(debug=False)
-#         logger.info("민감성 검증 워크플로우 컴파일 완료")
-    
-#     def run(self, user_input: str, workflow_id: str = None) -> ValidationAgentState:
-#         """민감성 검증 실행"""
-#         if not self.compiled_workflow:
-#             self.compile()
-        
-#         if not workflow_id:
-#             workflow_id = f"sensitivity_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-#         # 초기 상태 설정
-#         initial_state = ValidationAgentState(
-#             agent_type="sensitivity",
-#             workflow_id=workflow_id,
-#             validation_step="sensitivity_validation",
-#             original_input=user_input,
-#             created_at=datetime.now()
-#         )
-        
-#         logger.info(f"민감성 검증 실행 시작: {workflow_id}")
-        
-#         try:
-#             # 워크플로우 실행
-#             final_state = None
-#             for state in self.compiled_workflow.stream(initial_state):
-#                 final_state = list(state.values())[0] if state else None
+                logger.info(f"User feedback received: {len(user_feedback)} responses")
+                return user_feedback
+                
+            elif session_status["status"] == "expired":
+                raise ValidationError("피드백 세션이 만료되었습니다")
+            elif session_status["status"] == "cancelled":
+                raise ValidationError("사용자가 피드백 세션을 취소했습니다")
             
-#             if not final_state:
-#                 raise ValidationError("워크플로우 실행 결과를 받지 못했습니다")
-            
-#             logger.info(f"민감성 검증 완료: {workflow_id}, 결정: {final_state.agent_decision}")
-#             return final_state
-            
-#         except Exception as e:
-#             logger.error(f"민감성 검증 실행 실패: {str(e)}")
-#             raise ValidationError(f"민감성 검증 실행 실패: {str(e)}")
-
-
-# # 전역 워크플로우 인스턴스 (싱글톤 패턴)
-# _sensitivity_workflow_instance = None
-
-# def get_sensitivity_validator() -> SensitivityValidatorWorkflow:
-#     """민감성 검증 워크플로우 인스턴스 반환 (싱글톤)"""
-#     global _sensitivity_workflow_instance
-#     if _sensitivity_workflow_instance is None:
-#         _sensitivity_workflow_instance = SensitivityValidatorWorkflow()
-#         _sensitivity_workflow_instance.compile()
-#     return _sensitivity_workflow_instance
+            # 계속 대기
+            time.sleep(poll_interval)
+            waited_time += poll_interval
+        
+        # 타임아웃 발생
+        raise ValidationError(f"피드백 대기 시간 초과 ({max_wait_time}초)")
+        
+    except requests.RequestException as e:
+        logger.error(f"API 요청 실패: {e}")
+        # 네트워크 오류 시 기본 응답으로 폴백
+        logger.warning("네트워크 오류로 인해 기본 응답으로 진행합니다")
+        return ["문제를 수정했습니다"] * len(questions)
+        
+    except Exception as e:
+        logger.error(f"피드백 처리 중 오류: {e}")
+        # 기본 응답으로 폴백
+        return ["문제를 수정했습니다"] * len(questions)
