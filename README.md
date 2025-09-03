@@ -11,8 +11,8 @@ LangGraph를 활용한 채용공고 자동생성 GenAI 서비스입니다.
 ## 🏗️ 아키텍처
 
 ```
-사용자 입력(자연어) → 입력 데이터 구조화 → 민감성 검증(에이전트) →
-기업 데이터 검색 → 데이터 종합 → 초안 생성 → 환각 검증(에이전트) → 최종 출력
+사용자 입력(자연어) → 입력 데이터 구조화(LLM) → 민감성 검증(에이전트) →
+기업 데이터 검색 → 데이터 종합 → 초안 생성(LLM) → 환각 검증(에이전트) → 최종 출력
 ```
 
 ## 🚀 기술 스택
@@ -62,7 +62,7 @@ uv sync --dev
 source .venv/bin/activate  # Linux/Mac
 # .venv\Scripts\activate  # Windows
 
-# 또는 uv run으로 직접 실행
+# 또는 uv run으로 직접 실행(추천)
 uv run python -m src.api.main
 ```
 
@@ -79,7 +79,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### 5. 개발 모드 실행
+### 5. 직접 실행
 
 ```bash
 # API 서버 실행
@@ -96,10 +96,16 @@ uv run streamlit run frontend/main.py
 - ✅ Pydantic 템플릿 모델
 - ✅ LangGraph 워크플로우
 - ✅ Human-in-the-Loop 플로우
-- ✅ 검증 에이전트 (초안검증 + 민감성검증)
-- [] FastAPI + Streamlit UI/UX
+- ✅ 민감성 검증 에이전트
+- ✅ FastAPI + Streamlit UI/UX
+
+### 2순위 기능 (추가 기능)
+- [] Intrinsic Hallucination 검증 Agent
+- ✅ Extrinsic Hallucination 검증 Agent
 
 ### 2순위 기능 (성능 최적화)
+- ✅ Docker 컨테이너화
+- ✅ Primary/Secondary LLM 전환 로직
 - [] 실시간 스트리밍 응답
 - [] Redis 프롬프트 캐싱
 - [] Circuit Breaker & Fallback 전략
