@@ -27,7 +27,7 @@ from ..exceptions import ValidationError
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-API_BASE_URL = "http://localhost:8080/api/v1"
+API_BASE_URL = f"http://{settings.api.host}:{settings.api.port}/api/v1" # 요청 엔드포인트가 컨테이너 내부에 있으므로 localhost가 들어가도 된다.
 
 class SensitivityValidationRequest(BaseModel):
     """민감성 검증 요청 모델"""
