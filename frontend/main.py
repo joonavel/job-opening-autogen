@@ -9,6 +9,7 @@ MVP 채용공고 자동생성 Streamlit 프론트엔드
 """
 
 import streamlit as st
+import os
 import requests
 import logging
 import time
@@ -27,7 +28,7 @@ st.set_page_config(
 )
 
 # API 베이스 URL
-API_BASE_URL = "http://localhost:8080/api/v1"
+API_BASE_URL = f"{os.getenv('API_BASE_URL')}/api/v1" # docker-compose.yml 파일에서 설정된 API_BASE_URL 사용
 
 # 세션 상태 초기화
 if 'session_id' not in st.session_state:
