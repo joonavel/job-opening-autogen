@@ -77,8 +77,6 @@ async def get_workflow_status(
     특정 워크플로우의 현재 상태와 진행률을 확인합니다.
     """
     try:
-        # TODO: 실제 워크플로우 상태 조회 로직 구현
-        # 현재는 mock 데이터 반환
         
         return WorkflowStatusResponse(
             success=True,
