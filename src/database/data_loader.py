@@ -69,12 +69,12 @@ class OpenAPIDataLoader:
                 
                 # 인재상 정보 추가
                 talent_data = root_data.get('rightPeopleList', {}).get('rightPeopleListInfo', {})
-                if talent_data and talent_data.get('psnrightKeywordNm'):
+                if talent_data and talent_data.get('psnrightKeywordNm', None):
                     from .models import CompanyTalentCriteria
                     talent_criteria = CompanyTalentCriteria(
                         company_id=company.id,
-                        keyword=talent_data.get('psnrightKeywordNm'),
-                        description=talent_data.get('psnrightDesc')
+                        keyword=talent_data.get('psnrightKeywordNm', None),
+                        description=talent_data.get('psnrightDesc', None)
                     )
                     session.add(talent_criteria)
                 
@@ -94,6 +94,8 @@ class OpenAPIDataLoader:
             
             # 직종 정보 처리
             job_category_id = None
+            # TODO: 추후 수정
+            # empJobsListInfo가 List[dict]일 경우도 있음
             jobs_data = root_data.get('empJobsList', {}).get('empJobsListInfo', {})
             if jobs_data:
                 with db_session_scope() as session:
@@ -145,6 +147,8 @@ class OpenAPIDataLoader:
                 # 모집 부문 추가
                 recruitment_positions = root_data.get('empRecrList', {}).get('empRecrListInfo', [])
                 if recruitment_positions:
+                    # TODO: 추후 수정
+                    # empRecrListInfo가 List[dict]일 경우도 있음
                     # 단일 객체인 경우 리스트로 변환
                     if not isinstance(recruitment_positions, list):
                         recruitment_positions = [recruitment_positions]
@@ -152,11 +156,11 @@ class OpenAPIDataLoader:
                 
                 # 자기소개서 질문 추가
                 self_intro_data = root_data.get('empSelfintroList', {}).get('empSelsListInfo', {})
-                if self_intro_data and self_intro_data.get('selfintroQstCont'):
+                if self_intro_data and self_intro_data.get('selfintroQstCont', None):
                     from .models import JobPostingSelfIntro
                     self_intro = JobPostingSelfIntro(
                         job_posting_id=job_posting.id,
-                        question_content=self_intro_data.get('selfintroQstCont'),
+                        question_content=self_intro_data.get('selfintroQstCont', None),
                         question_order=1
                     )
                     session.add(self_intro)

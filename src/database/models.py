@@ -4,7 +4,7 @@ Open API 데이터 구조를 기반으로 한 SQLAlchemy ORM 모델
 """
 
 from datetime import datetime, timezone, date
-from typing import List, Optional
+from typing import List, Optional, Any
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Date, Float, Boolean, 
     ForeignKey, JSON, Index, UniqueConstraint
@@ -27,7 +27,7 @@ class Company(Base):
     # 기본 정보
     company_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True, comment="회사명")
     business_number: Mapped[str] = mapped_column(String(50), comment="사업자등록번호")
-    company_classification: Mapped[str] = mapped_column(String(100), comment="기업구분명")
+    company_classification: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="기업구분명")
     
     # 위치 정보
     map_coord_x: Mapped[float] = mapped_column(Float, comment="좌표:경도")
@@ -40,7 +40,7 @@ class Company(Base):
     # 기업 소개
     intro_summary: Mapped[str] = mapped_column(Text, comment="기업소개 요약")
     intro_detail: Mapped[str] = mapped_column(Text, comment="기업소개 상세")
-    main_business: Mapped[str] = mapped_column(Text, comment="주요사업")
+    main_business: Mapped[str] = mapped_column(Text, nullable=True, comment="주요사업")
     
     # 메타데이터
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
@@ -97,8 +97,8 @@ class CompanyTalentCriteria(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="companies.id", ondelete="CASCADE"), nullable=False)
     
-    keyword: Mapped[str] = mapped_column(String(length=200), comment="인재상 키워드")
-    description: Mapped[str] = mapped_column(Text, comment="인재상 설명")
+    keyword: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="인재상 키워드")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="인재상 설명")
     
     # 관계
     company: Mapped["Company"] = relationship(argument="Company", back_populates="talent_criteria")
@@ -125,14 +125,14 @@ class JobPosting(Base):
     # 웹 정보
     company_homepage: Mapped[str] = mapped_column(String(length=500), comment="채용기업 홈페이지")
     detail_url: Mapped[str] = mapped_column(String(length=500), comment="채용사이트 URL")
-    mobile_url: Mapped[str] = mapped_column(String(length=500), comment="모바일채용사이트 URL")
+    mobile_url: Mapped[str] = mapped_column(String(length=500), nullable=True, comment="모바일채용사이트 URL")
     
     # 채용 상세 정보
-    summary_content: Mapped[str] = mapped_column(Text, comment="모집부문 전체요약")
+    summary_content: Mapped[str] = mapped_column(Text, nullable=True, comment="모집부문 전체요약")
     common_content: Mapped[str] = mapped_column(Text, comment="공통사항")
     submit_documents: Mapped[str] = mapped_column(Text, comment="제출서류")
     application_method: Mapped[str] = mapped_column(Text, comment="접수방법")
-    announcement_date: Mapped[str] = mapped_column(Text, comment="합격자발표일")
+    announcement_date: Mapped[str] = mapped_column(Text, nullable=True, comment="합격자발표일")
     inquiry_content: Mapped[str] = mapped_column(Text, comment="문의사항")
     other_content: Mapped[str] = mapped_column(Text, comment="기타사항")
     
@@ -172,9 +172,9 @@ class JobPostingStep(Base):
     
     step_name: Mapped[str] = mapped_column(String(length=200), comment="전형단계명")
     step_order: Mapped[int] = mapped_column(Integer, comment="전형단계 순서")
-    schedule_content: Mapped[str] = mapped_column(Text, comment="전형단계일정내용")
-    step_content: Mapped[str] = mapped_column(Text, comment="전형단계내용")
-    memo_content: Mapped[str] = mapped_column(Text, comment="전형단계비고")
+    schedule_content: Mapped[str] = mapped_column(Text, nullable=True, comment="전형단계일정내용")
+    step_content: Mapped[str] = mapped_column(Text, nullable=True, comment="전형단계내용")
+    memo_content: Mapped[str] = mapped_column(Text, nullable=True, comment="전형단계비고")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="selection_steps")
@@ -212,7 +212,7 @@ class JobPostingSelfIntro(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    question_content: Mapped[str] = mapped_column(Text, comment="자기소개서 질문내용")
+    question_content: Mapped[str] = mapped_column(Text, nullable=True, comment="자기소개서 질문내용")
     question_order: Mapped[int] = mapped_column(Integer, comment="질문 순서")
     
     # 관계
@@ -281,3 +281,30 @@ Index('ix_companies_name_search', Company.company_name)
 Index('ix_job_postings_title_search', JobPosting.title)
 Index('ix_job_postings_dates', JobPosting.start_date, JobPosting.end_date)
 Index('ix_templates_status_created', JobPostingTemplate.generation_status, JobPostingTemplate.created_at)
+
+
+def convert_orm_to_dict(orm_obj):
+    """SQLAlchemy ORM 객체를 딕셔너리로 변환"""
+    if orm_obj is None:
+        return None
+    
+    # 기본 컬럼들을 딕셔너리로 변환
+    result = {}
+    for column in orm_obj.__table__.columns:
+        if column.name == "id" or column.name == "company_id":
+            continue
+        value = getattr(orm_obj, column.name)
+        # datetime 객체는 ISO 문자열로 변환
+        if isinstance(value, datetime):
+            result[column.name] = value.isoformat()
+        else:
+            result[column.name] = value
+    
+    return result
+
+def convert_orm_list_to_dict_list(orm_list) -> list[dict[str, Any] | None]:
+    """SQLAlchemy ORM 리스트를 딕셔너리 리스트로 변환"""
+    if not orm_list:
+        return []
+    
+    return [convert_orm_to_dict(item) for item in orm_list]

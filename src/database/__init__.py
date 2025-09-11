@@ -25,7 +25,8 @@ from .models import (
     JobPostingPosition,
     JobPostingSelfIntro,
     JobPostingTemplate,
-    FeedbackSession
+    FeedbackSession,
+    convert_orm_list_to_dict_list,
 )
 
 from .repositories import (
@@ -65,6 +66,7 @@ __all__ = [
     'JobPostingSelfIntro',
     'JobPostingTemplate',
     'FeedbackSession',
+    'convert_orm_list_to_dict_list',
     
     # Repositories
     'CompanyRepository',
