@@ -21,30 +21,30 @@ class Company(Base):
     __tablename__ = "companies"
     
     # 기본 식별자
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    emp_co_no = Column(String(50), unique=True, nullable=False, index=True, comment="채용기업번호")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    emp_co_no: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True, comment="채용기업번호")
     
     # 기본 정보
-    company_name = Column(String(200), nullable=False, index=True, comment="회사명")
-    business_number = Column(String(50), comment="사업자등록번호")
-    company_classification = Column(String(100), comment="기업구분명")
+    company_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True, comment="회사명")
+    business_number: Mapped[str] = mapped_column(String(50), comment="사업자등록번호")
+    company_classification: Mapped[str] = mapped_column(String(100), comment="기업구분명")
     
     # 위치 정보
-    map_coord_x = Column(Float, comment="좌표:경도")
-    map_coord_y = Column(Float, comment="좌표:위도")
+    map_coord_x: Mapped[float] = mapped_column(Float, comment="좌표:경도")
+    map_coord_y: Mapped[float] = mapped_column(Float, comment="좌표:위도")
     
     # 웹 정보
-    logo_url = Column(Text, comment="로고 URL")
-    homepage = Column(String(500), comment="홈페이지")
+    logo_url: Mapped[str] = mapped_column(Text, comment="로고 URL")
+    homepage: Mapped[str] = mapped_column(String(500), comment="홈페이지")
     
     # 기업 소개
-    intro_summary = Column(Text, comment="기업소개 요약")
-    intro_detail = Column(Text, comment="기업소개 상세")
-    main_business = Column(Text, comment="주요사업")
+    intro_summary: Mapped[str] = mapped_column(Text, comment="기업소개 요약")
+    intro_detail: Mapped[str] = mapped_column(Text, comment="기업소개 상세")
+    main_business: Mapped[str] = mapped_column(Text, comment="주요사업")
     
     # 메타데이터
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     
     # 관계
     welfare_items: Mapped[List["CompanyWelfare"]] = relationship("CompanyWelfare", back_populates="company", cascade="all, delete-orphan")
@@ -60,11 +60,11 @@ class CompanyWelfare(Base):
     """기업 복리후생 정보 - welfareList.welfareListInfo 기반"""
     __tablename__ = "company_welfare"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     
-    category_name = Column(String(100), comment="복리후생 카테고리")
-    welfare_content = Column(Text, comment="복리후생 내용")
+    category_name: Mapped[str] = mapped_column(String(100), comment="복리후생 카테고리")
+    welfare_content: Mapped[str] = mapped_column(Text, comment="복리후생 내용")
     
     # 관계
     company: Mapped["Company"] = relationship("Company", back_populates="welfare_items")
@@ -74,15 +74,15 @@ class CompanyHistory(Base):
     """기업 연혁 정보 - historyList.historyListInfo 기반"""
     __tablename__ = "company_history"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="companies.id", ondelete="CASCADE"), nullable=False)
     
-    history_year = Column(String(4), comment="연혁 년도")
-    history_month = Column(String(2), comment="연혁 월")
-    history_content = Column(Text, comment="연혁 내용")
+    history_year: Mapped[str] = mapped_column(String(length=4), comment="연혁 년도")
+    history_month: Mapped[str] = mapped_column(String(length=2), comment="연혁 월")
+    history_content: Mapped[str] = mapped_column(Text, comment="연혁 내용")
     
     # 관계
-    company: Mapped["Company"] = relationship("Company", back_populates="history_items")
+    company: Mapped["Company"] = relationship(argument="Company", back_populates="history_items")
     
     # 인덱스
     __table_args__ = (
@@ -94,14 +94,14 @@ class CompanyTalentCriteria(Base):
     """기업 인재상 정보 - rightPeopleList.rightPeopleListInfo 기반"""
     __tablename__ = "company_talent_criteria"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="companies.id", ondelete="CASCADE"), nullable=False)
     
-    keyword = Column(String(200), comment="인재상 키워드")
-    description = Column(Text, comment="인재상 설명")
+    keyword: Mapped[str] = mapped_column(String(length=200), comment="인재상 키워드")
+    description: Mapped[str] = mapped_column(Text, comment="인재상 설명")
     
     # 관계
-    company: Mapped["Company"] = relationship("Company", back_populates="talent_criteria")
+    company: Mapped["Company"] = relationship(argument="Company", back_populates="talent_criteria")
 
 
 class JobPosting(Base):
@@ -109,36 +109,36 @@ class JobPosting(Base):
     __tablename__ = "job_postings"
     
     # 기본 식별자
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    emp_seq_no = Column(String(50), unique=True, nullable=False, index=True, comment="공개채용공고순번")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    emp_seq_no: Mapped[str] = mapped_column(String(length=50), unique=True, nullable=False, index=True, comment="공개채용공고순번")
     
     # 기본 정보
-    title = Column(Text, nullable=False, comment="채용제목")
-    emp_co_no = Column(String(50), ForeignKey("companies.emp_co_no"), nullable=False)
-    job_category_id = Column(Integer, ForeignKey("job_categories.id"))
+    title: Mapped[str] = mapped_column(Text, nullable=False, comment="채용제목")
+    emp_co_no: Mapped[str] = mapped_column(String(length=50), ForeignKey(column="companies.emp_co_no"), nullable=False)
+    job_category_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_categories.id"))
     
     # 채용 일정
-    start_date = Column(Date, comment="채용시작일자")
-    end_date = Column(Date, comment="채용종료일자")
-    employment_type = Column(String(100), comment="고용형태")
+    start_date: Mapped[date] = mapped_column(Date, comment="채용시작일자")
+    end_date: Mapped[date] = mapped_column(Date, comment="채용종료일자")
+    employment_type: Mapped[str] = mapped_column(String(length=100), comment="고용형태")
     
     # 웹 정보
-    company_homepage = Column(String(500), comment="채용기업 홈페이지")
-    detail_url = Column(String(500), comment="채용사이트 URL")
-    mobile_url = Column(String(500), comment="모바일채용사이트 URL")
+    company_homepage: Mapped[str] = mapped_column(String(length=500), comment="채용기업 홈페이지")
+    detail_url: Mapped[str] = mapped_column(String(length=500), comment="채용사이트 URL")
+    mobile_url: Mapped[str] = mapped_column(String(length=500), comment="모바일채용사이트 URL")
     
     # 채용 상세 정보
-    summary_content = Column(Text, comment="모집부문 전체요약")
-    common_content = Column(Text, comment="공통사항")
-    submit_documents = Column(Text, comment="제출서류")
-    application_method = Column(Text, comment="접수방법")
-    announcement_date = Column(Text, comment="합격자발표일")
-    inquiry_content = Column(Text, comment="문의사항")
-    other_content = Column(Text, comment="기타사항")
+    summary_content: Mapped[str] = mapped_column(Text, comment="모집부문 전체요약")
+    common_content: Mapped[str] = mapped_column(Text, comment="공통사항")
+    submit_documents: Mapped[str] = mapped_column(Text, comment="제출서류")
+    application_method: Mapped[str] = mapped_column(Text, comment="접수방법")
+    announcement_date: Mapped[str] = mapped_column(Text, comment="합격자발표일")
+    inquiry_content: Mapped[str] = mapped_column(Text, comment="문의사항")
+    other_content: Mapped[str] = mapped_column(Text, comment="기타사항")
     
     # 메타데이터
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     
     # 관계
     company: Mapped["Company"] = relationship("Company", back_populates="job_postings")
@@ -155,9 +155,9 @@ class JobCategory(Base):
     """직종 분류 - empJobsList.empJobsListInfo 기반"""
     __tablename__ = "job_categories"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    jobs_code = Column(String(10), unique=True, nullable=False, comment="직종 코드")
-    jobs_name = Column(String(200), nullable=False, comment="직종명")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    jobs_code: Mapped[str] = mapped_column(String(length=10), unique=True, nullable=False, comment="직종 코드")
+    jobs_name: Mapped[str] = mapped_column(String(length=200), nullable=False, comment="직종명")
     
     # 관계
     job_postings: Mapped[List["JobPosting"]] = relationship("JobPosting", back_populates="job_category")
@@ -167,14 +167,14 @@ class JobPostingStep(Base):
     """채용 전형 단계 - empSelsList.empSelsListInfo 기반"""
     __tablename__ = "job_posting_steps"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    job_posting_id = Column(Integer, ForeignKey("job_postings.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    step_name = Column(String(200), comment="전형단계명")
-    step_order = Column(Integer, comment="전형단계 순서")
-    schedule_content = Column(Text, comment="전형단계일정내용")
-    step_content = Column(Text, comment="전형단계내용")
-    memo_content = Column(Text, comment="전형단계비고")
+    step_name: Mapped[str] = mapped_column(String(length=200), comment="전형단계명")
+    step_order: Mapped[int] = mapped_column(Integer, comment="전형단계 순서")
+    schedule_content: Mapped[str] = mapped_column(Text, comment="전형단계일정내용")
+    step_content: Mapped[str] = mapped_column(Text, comment="전형단계내용")
+    memo_content: Mapped[str] = mapped_column(Text, comment="전형단계비고")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="selection_steps")
@@ -189,17 +189,17 @@ class JobPostingPosition(Base):
     """채용 모집 부문 - empRecrList.empRecrListInfo 기반"""
     __tablename__ = "job_posting_positions"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    job_posting_id = Column(Integer, ForeignKey("job_postings.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    position_name = Column(String(200), comment="채용모집명")
-    job_description = Column(Text, comment="직무설명")
-    work_region = Column(String(200), comment="근무지")
-    career_requirement = Column(String(100), comment="지원자격(경력)")
-    education_requirement = Column(String(100), comment="지원자격(학력)")
-    other_requirements = Column(Text, comment="지원자격(기타)")
-    recruitment_count = Column(String(20), comment="모집인원수")
-    memo_content = Column(Text, comment="비고")
+    position_name: Mapped[str] = mapped_column(String(length=200), comment="채용모집명")
+    job_description: Mapped[str] = mapped_column(Text, comment="직무설명")
+    work_region: Mapped[str] = mapped_column(String(length=200), comment="근무지")
+    career_requirement: Mapped[str] = mapped_column(String(length=100), comment="지원자격(경력)")
+    education_requirement: Mapped[str] = mapped_column(String(length=100), comment="지원자격(학력)")
+    other_requirements: Mapped[str] = mapped_column(Text, comment="지원자격(기타)")
+    recruitment_count: Mapped[str] = mapped_column(String(length=20), comment="모집인원수")
+    memo_content: Mapped[str] = mapped_column(Text, comment="비고")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="recruitment_positions")
@@ -209,11 +209,11 @@ class JobPostingSelfIntro(Base):
     """자기소개서 질문 - empSelfintroList.empSelsListInfo 기반"""
     __tablename__ = "job_posting_self_intro"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    job_posting_id = Column(Integer, ForeignKey("job_postings.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    question_content = Column(Text, comment="자기소개서 질문내용")
-    question_order = Column(Integer, comment="질문 순서")
+    question_content: Mapped[str] = mapped_column(Text, comment="자기소개서 질문내용")
+    question_order: Mapped[int] = mapped_column(Integer, comment="질문 순서")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="self_intro_questions")
