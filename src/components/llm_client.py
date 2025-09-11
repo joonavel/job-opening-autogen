@@ -127,7 +127,7 @@ class OpenAIClient(BaseLLMClient):
             self.client = ChatOpenAI(
                 model=self.config.model.value,
                 temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                max_tokens=self.config.max_tokens, # type: ignore
                 max_retries=self.config.max_retries,
                 timeout=self.config.timeout,
                 api_key=self.config.api_key
@@ -161,23 +161,29 @@ class OpenAIClient(BaseLLMClient):
             
             # LLM 호출
             result = structured_llm.invoke(messages)
-            
+
+            # 타입 변환: 딕셔너리인 경우 Pydantic 모델로 변환
+            if isinstance(result, dict):
+                result = output_schema(**result)
+            elif not isinstance(result, BaseModel):
+                raise LLMError(f"예상치 못한 반환 타입: {type(result)}")
+
             # 통계 업데이트
             generation_time = time.time() - start_time
             self.stats.request_count += 1
             self.stats.generation_time += generation_time
-            
+
             # 토큰 사용량은 실제 구현에서 response.usage_metadata 등을 통해 추출해야 함
             # 현재는 임시로 추정값 사용
             estimated_prompt_tokens = len(system_prompt + user_prompt) // 4
             estimated_completion_tokens = 500  # 임시 추정값
-            
+
             self.stats.prompt_tokens += estimated_prompt_tokens
             self.stats.completion_tokens += estimated_completion_tokens
             self.stats.total_tokens += estimated_prompt_tokens + estimated_completion_tokens
-            
+
             logger.info(f"OpenAI 구조화된 출력 생성 완료 ({generation_time:.2f}초)")
-            
+
             return result
             
         except Exception as e:
@@ -195,13 +201,13 @@ class AnthropicClient(BaseLLMClient):
                 raise LLMError("Anthropic API 키가 설정되지 않았습니다")
                 
             self.client = ChatAnthropic(
-                model=self.config.model.value,
+                model=self.config.model.value, # type: ignore
                 temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
+                max_tokens=self.config.max_tokens, # type: ignore
                 max_retries=self.config.max_retries,
                 timeout=self.config.timeout,
                 api_key=self.config.api_key
-            )
+            ) # type: ignore
             
             logger.info(f"Anthropic 클라이언트 초기화 완료: {self.config.model.value}")
             
@@ -231,23 +237,29 @@ class AnthropicClient(BaseLLMClient):
             
             # LLM 호출
             result = structured_llm.invoke(messages)
-            
+
+            # 타입 변환: 딕셔너리인 경우 Pydantic 모델로 변환
+            if isinstance(result, dict):
+                result = output_schema(**result)
+            elif not isinstance(result, BaseModel):
+                raise LLMError(f"예상치 못한 반환 타입: {type(result)}")
+
             # 통계 업데이트
             generation_time = time.time() - start_time
             self.stats.request_count += 1
             self.stats.generation_time += generation_time
-            
+
             # 토큰 사용량은 실제 구현에서 response.usage_metadata 등을 통해 추출해야 함
             # 현재는 임시로 추정값 사용
             estimated_prompt_tokens = len(system_prompt + user_prompt) // 4
             estimated_completion_tokens = 500  # 임시 추정값
-            
+
             self.stats.prompt_tokens += estimated_prompt_tokens
             self.stats.completion_tokens += estimated_completion_tokens
             self.stats.total_tokens += estimated_prompt_tokens + estimated_completion_tokens
-            
+
             logger.info(f"Anthropic 구조화된 출력 생성 완료 ({generation_time:.2f}초)")
-            
+
             return result
             
         except Exception as e:

@@ -9,7 +9,7 @@
 
 import logging
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
 
 from ..models.job_posting import (
@@ -48,7 +48,7 @@ class NaturalLanguageProcessor:
             "average_processing_time": 0.0
         }
     
-    def process_natural_language_input(self, context: ProcessingContext) -> UserInput:
+    def process_natural_language_input(self, context: ProcessingContext) -> Tuple[UserInput, Dict[str, Any]]:
         """
         자연어 입력을 구조화된 UserInput으로 변환
         
