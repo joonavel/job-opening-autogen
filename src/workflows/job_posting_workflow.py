@@ -8,7 +8,7 @@ LangGraph를 활용한 채용공고 생성 워크플로우
 - 단계별 상태 관리 및 체크포인트
 """
 
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
+from typing import TypedDict, List, Dict, Any, Optional, Annotated, Literal
 from typing_extensions import NotRequired
 from datetime import datetime
 import logging
@@ -18,10 +18,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.message import add_messages
 
 from ..models.job_posting import (
-    JobPostingDraft, UserInput, CompanyData, ValidationResult, ValidationStatus
+    JobPostingDraft, UserInput, CompanyData, ValidationResult, ValidationStatus, CompanyClassificationEnum
 )
-from ..database.repositories import CompanyRepository, DataRepositoryManager
+from ..database.repositories import DataRepositoryManager
 from ..database.connection import db_session_scope
+from ..database.models import convert_orm_list_to_dict_list
 from ..exceptions import WorkflowError, DatabaseError
 from ..components.natural_language_processor import (
     get_natural_language_processor, ProcessingContext
@@ -63,7 +64,11 @@ class WorkflowState(TypedDict):
     
     # === 검색된 데이터 ===
     company_query: Annotated[Optional[str], "기업 검색 쿼리"]
-    company_data: Annotated[Optional[CompanyData], "검색된 기업 정보"]
+    company_data: Annotated[Optional[CompanyData], "검색된 기업의 기본 정보"]
+    welfare_items: Annotated[Optional[List[Dict[str, Any] | None]], "검색된 기업의 복리후생 정보"]
+    history_items: Annotated[Optional[List[Dict[str, Any] | None]], "검색된 기업의 연혁 정보"]
+    talent_criteria: Annotated[Optional[List[Dict[str, Any] | None]], "검색된 기업의 인재상 정보"]
+    # job_postings: Annotated[Optional[List[JobPosting]], "검색된 기업의 이전 채용공고 정보"]
     
     # === 환각 검증을 위한 추적 정보 ===
     data_source_tracking: Annotated[Optional[Dict[str, Any]], "데이터 출처 및 신뢰성 정보"]
@@ -251,16 +256,29 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
                     
                     # 추가 기업 정보도 추적 (환각 검증용)
                     alternative_companies = companies[1:] if len(companies) > 1 else []
-                    
+
+                    # company_classification을 enum으로 변환
+                    company_classification = None
+                    if db_company.company_classification:
+                        try:
+                            company_classification = CompanyClassificationEnum(db_company.company_classification)
+                        except ValueError:
+                            company_classification = None
+
                     company_data = CompanyData(
                         company_name=db_company.company_name or company_name,
-                        company_classification=db_company.company_classification,
+                        company_classification=company_classification,
                         homepage=db_company.homepage,
                         logo_url=db_company.logo_url,
                         intro_summary=db_company.intro_summary,
                         intro_detail=db_company.intro_detail,
                         main_business=db_company.main_business,
                     )
+                    
+                    welfare_items = convert_orm_list_to_dict_list(db_company.welfare_items)
+                    history_items = convert_orm_list_to_dict_list(db_company.history_items)
+                    talent_criteria = convert_orm_list_to_dict_list(db_company.talent_criteria)
+                    # job_postings = db_company.job_postings
                     
                     data_source = "database"
                     
@@ -295,6 +313,9 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
                         intro_detail=None,
                         main_business=None,
                     )
+                    
+                    welfare_items, history_items, talent_criteria  = None, None, None
+                    # job_postings = None
                     
                     data_source = "user_input"
                     
@@ -332,6 +353,9 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
                     main_business=None,
                 )
                 
+                welfare_items, history_items, talent_criteria  = None, None, None
+                # job_postings = None
+                
                 data_source = "user_input_fallback"
                 
                 # DB 오류 추적 정보
@@ -356,7 +380,10 @@ def retrieve_company_data(state: WorkflowState) -> WorkflowState:
         # 상태에 기업 데이터와 추적 정보 저장
         state["company_data"] = company_data
         state["data_source_tracking"] = data_source_tracking
-    
+        state["welfare_items"] = welfare_items
+        state["history_items"] = history_items
+        state["talent_criteria"] = talent_criteria
+        # state["job_postings"] = job_postings
         
         logger.info(f"기업 데이터 검색 완료 (추적 정보 포함): {company_name}")
         
@@ -395,6 +422,11 @@ def structure_input(state: WorkflowState) -> WorkflowState:
         
         user_input = state.get("user_input")
         company_data = state.get("company_data")
+        welfare_items = state.get("welfare_items", [])
+        history_items = state.get("history_items", [])
+        talent_criteria = state.get("talent_criteria", [])
+        # job_postings = state.get("job_postings", [])
+        
         
         if not user_input or not company_data:
             raise WorkflowError("사용자 입력 또는 기업 데이터가 없습니다")
@@ -422,6 +454,10 @@ def structure_input(state: WorkflowState) -> WorkflowState:
                 "location": user_input.work_location.model_dump() if user_input.work_location else None,
             },
             "additional_info": user_input.additional_info,
+            "welfare_items": welfare_items,
+            "history_items": history_items,
+            "talent_criteria": talent_criteria,
+            # "job_postings": job_postings
         }
         
         state["structured_input"] = structured_data
@@ -497,7 +533,10 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
         # 검증 실패시 처리
         failed_validations = [v for v in validation_results if v.status == ValidationStatus.FAILED]
         if failed_validations:
-            logger.warning(f"입력 검증 경고: {', '.join([validation.issues for validation in failed_validations])}")
+            whole_issues = []
+            for validation in failed_validations:
+                whole_issues.extend(validation.issues)
+            logger.warning(f"입력 검증 경고: {', '.join(whole_issues)}")
             # 경고만 하고 계속 진행 (완전 실패가 아닌 경우)
         
         # 채용공고 생성기를 사용한 실제 LLM 생성

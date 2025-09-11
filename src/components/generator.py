@@ -20,7 +20,11 @@ from ..models.job_posting import (
 )
 from ..exceptions import LLMError
 from .llm_client import get_llm_manager
-from config.prompts import get_job_posting_generation_sys_prompt, get_job_posting_generation_user_prompt, get_company_info_prompt, get_job_requirements_prompt, get_compensation_prompt, get_location_prompt, get_additional_info_prompt
+from config.prompts import (
+    get_job_posting_generation_sys_prompt, get_job_posting_generation_user_prompt, get_company_info_prompt,
+    get_job_requirements_prompt, get_compensation_prompt, get_location_prompt, get_additional_info_prompt,
+    get_welfare_prompt, get_history_prompt, get_talent_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,10 +117,13 @@ class JobPostingGenerator:
     
         # 기업 정보 섹션
         if "company_info" in context.structured_input:
-            company_data = context.structured_input.get("company_info", {})        
+            company_data = context.structured_input.get("company_info", {})  
+            company_classification = company_data.get("company_classification", "기타")
+            if hasattr(company_classification, 'value'):
+                company_classification = company_classification.value
             company_info_text = get_company_info_prompt().format(
                 company_name=company_data.get("company_name", "정보 없음"),
-                company_classification=company_data.get("company_classification", "정보 없음"),
+                company_classification=company_classification,
                 homepage=company_data.get("homepage", "정보 없음"),
                 intro_summary=company_data.get("intro_summary", "정보 없음"),
                 intro_detail=company_data.get("intro_detail", "정보 없음"),
@@ -178,6 +185,27 @@ class JobPostingGenerator:
                 country=work_location.get("country", "정보 없음")
             )
             
+        if "welfare_items" in context.structured_input:
+            welfare_items = context.structured_input.get("welfare_items", [])
+            welfare_items_text = "\n".join(f'- {item}' for item in welfare_items or [])
+            welfare_text = get_welfare_prompt().format(
+                welfares=welfare_items_text
+            )
+            
+        if "history_items" in context.structured_input:
+            history_items = context.structured_input.get("history_items", [])
+            history_items_text = "\n".join(f'- {item}' for item in history_items or [])
+            history_text = get_history_prompt().format(
+                history=history_items_text
+            )
+            
+        if "talent_criteria" in context.structured_input:
+            talent_criteria = context.structured_input.get("talent_criteria", [])
+            talent_criteria_text = "\n".join(f'- {item}' for item in talent_criteria or [])
+            talent_text = get_talent_prompt().format(
+                talents=talent_criteria_text
+            )
+            
         if "additional_info" in context.structured_input:
             additional_info = context.structured_input.get("additional_info", [])
             additional_info_text = "\n".join(f'- {info}' for info in additional_info or [])
@@ -191,7 +219,10 @@ class JobPostingGenerator:
             job_requirements=job_requirements_text,
             compensation=compensation_text,
             location=location_text,
-            additional_info=additional_text
+            welfare=welfare_text,
+            history=history_text,
+            talent=talent_text,
+            additional_info=additional_text,   
         )
         
         return user_prompt

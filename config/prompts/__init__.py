@@ -23,6 +23,9 @@ JOB_REQUIREMENTS_PROMPT = PROMPT_DIR / "input_structure" / "job_requirements.pro
 COMPENSATION_PROMPT = PROMPT_DIR / "input_structure" / "compensation.prompt"
 LOCATION_PROMPT = PROMPT_DIR / "input_structure" / "location.prompt"
 ADDITIONAL_INFO_PROMPT = PROMPT_DIR / "input_structure" / "additional_info.prompt"
+WELFARE_PROMPT = PROMPT_DIR / "input_structure" / "company_welfare.prompt"
+HISTORY_PROMPT = PROMPT_DIR / "input_structure" / "company_history.prompt"
+TALENT_PROMPT = PROMPT_DIR / "input_structure" / "company_talent.prompt"
 
 def load_prompt_template(file_path: Path) -> str:
     """
@@ -75,10 +78,10 @@ def get_job_posting_generation_user_prompt() -> str:
     """채용공고 생성 프롬프트 반환"""
     return load_prompt_template(JOB_POSTING_GENERATION_USER_PROMPT)
 
+
 def get_company_info_prompt() -> str:
     """기업 정보 프롬프트 반환"""
     return load_prompt_template(COMPANY_INFO_PROMPT)
-
 
 
 def get_job_requirements_prompt() -> str:
@@ -86,12 +89,9 @@ def get_job_requirements_prompt() -> str:
     return load_prompt_template(JOB_REQUIREMENTS_PROMPT)
 
 
-
-
 def get_compensation_prompt() -> str:
     """보상 프롬프트 반환"""
     return load_prompt_template(COMPENSATION_PROMPT)
-
 
 
 def get_location_prompt() -> str:
@@ -99,11 +99,21 @@ def get_location_prompt() -> str:
     return load_prompt_template(LOCATION_PROMPT)
 
 
+def get_welfare_prompt() -> str:
+    """복리후생 프롬프트 반환"""
+    return load_prompt_template(WELFARE_PROMPT)
+
+def get_history_prompt() -> str:
+    """기업 연혁 프롬프트 반환"""
+    return load_prompt_template(HISTORY_PROMPT)
+
+def get_talent_prompt() -> str:
+    """인재상 프롬프트 반환"""
+    return load_prompt_template(TALENT_PROMPT)
 
 def get_additional_info_prompt() -> str:
     """추가 정보 프롬프트 반환"""
     return load_prompt_template(ADDITIONAL_INFO_PROMPT)
-
 
 
 def get_all_prompts() -> Dict[str, str]:
@@ -118,6 +128,9 @@ def get_all_prompts() -> Dict[str, str]:
         "compensation": get_compensation_prompt(),
         "location": get_location_prompt(),
         "additional_info": get_additional_info_prompt(),
+        "welfare": get_welfare_prompt(),
+        "history": get_history_prompt(),
+        "talent": get_talent_prompt(),
     }
 
 
@@ -140,6 +153,9 @@ def validate_prompts() -> Dict[str, bool]:
         "compensation": COMPENSATION_PROMPT,
         "location": LOCATION_PROMPT,
         "additional_info": ADDITIONAL_INFO_PROMPT,
+        "welfare": WELFARE_PROMPT,
+        "history": HISTORY_PROMPT,
+        "talent": TALENT_PROMPT,
     }
     
     for name, path in prompts.items():
