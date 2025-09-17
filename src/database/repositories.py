@@ -145,6 +145,23 @@ class CompanyRepository(BaseRepository):
             return history_objects
         except SQLAlchemyError as e:
             self._handle_database_error("연혁 정보 추가", e)
+            
+    def add_talent_criteria(self, company_id: int, talent_criteria: List[Dict[str, str]]) -> List[CompanyTalentCriteria]:
+        """인재상 정보 추가"""
+        try:
+            talent_criteria_objects = []
+            for item in talent_criteria:
+                talent_criteria = CompanyTalentCriteria(
+                    company_id=company_id,
+                    keyword=item.get('psnrightKeywordNm'),
+                    description=item.get('psnrightDesc')
+                )
+                talent_criteria_objects.append(talent_criteria)
+                self.session.add(talent_criteria)
+            self.session.flush()
+            return talent_criteria_objects
+        except SQLAlchemyError as e:
+            self._handle_database_error("인재상 정보 추가", e)
     
     def update_company(self, company_id: int, update_data: Dict[str, Any]) -> Optional[Company]:
         """기업 정보 업데이트"""
@@ -182,6 +199,8 @@ class JobCategoryRepository(BaseRepository):
             return category
         except SQLAlchemyError as e:
             self._handle_database_error("직종 분류 생성/조회", e)
+    
+    
 
 
 class JobPostingRepository(BaseRepository):
@@ -205,7 +224,7 @@ class JobPostingRepository(BaseRepository):
                 JobPosting.emp_seq_no == emp_seq_no
             ).options(
                 joinedload(JobPosting.company),
-                joinedload(JobPosting.job_category),
+                joinedload(JobPosting.job_categories),
                 joinedload(JobPosting.selection_steps),
                 joinedload(JobPosting.recruitment_positions),
                 joinedload(JobPosting.self_intro_questions)
@@ -221,7 +240,7 @@ class JobPostingRepository(BaseRepository):
                 JobPosting.id == posting_id
             ).options(
                 joinedload(JobPosting.company),
-                joinedload(JobPosting.job_category),
+                joinedload(JobPosting.job_categories),
                 joinedload(JobPosting.selection_steps),
                 joinedload(JobPosting.recruitment_positions)
             ).first()
@@ -293,7 +312,7 @@ class JobPostingRepository(BaseRepository):
             # 결과 조회
             results = base_query.options(
                 joinedload(JobPosting.company),
-                joinedload(JobPosting.job_category)
+                joinedload(JobPosting.job_categories)
             ).order_by(
                 desc(JobPosting.created_at)
             ).limit(limit).offset(offset).all()
@@ -303,6 +322,42 @@ class JobPostingRepository(BaseRepository):
         except SQLAlchemyError as e:
             logger.error(f"채용공고 검색 실패: {e}")
             return [], 0
+        
+    def check_category_exists(self, jobs_code: str) -> bool:
+        """직종 분류 존재 여부 확인"""
+        try:
+            temp = self.session.query(JobCategory).filter(
+                JobCategory.jobs_code == jobs_code
+            ).first()
+            if temp:
+                return True
+            else:
+                return False
+        except SQLAlchemyError as e:
+            self._handle_database_error("직종 분류 존재 여부 확인", e)
+            return False
+        
+    def add_job_category(self, posting_id: int, jobs_data: List[Dict[str, Any]]) -> List[JobCategory] | None:
+        """직종 정보 추가"""
+        try:
+            job_category_objects = []
+            for job_data in jobs_data:
+                if self.check_category_exists(job_data.get('jobsCd', '')):
+                    logger.info(f"직종 분류가 이미 존재합니다: {job_data.get('jobsCd', '')}")
+                    # 이미 존재하면 추가하지 않음
+                    continue
+                job_category = JobCategory(
+                    job_posting_id=posting_id,
+                    jobs_code=job_data.get('jobsCd'),
+                    jobs_name=job_data.get('jobsCdKorNm')
+                    )
+                job_category_objects.append(job_category)
+                self.session.add(job_category)
+            self.session.flush()
+            return job_category_objects
+        except SQLAlchemyError as e:
+            self._handle_database_error("직종 정보 추가", e)
+                
     
     def add_selection_steps(self, posting_id: int, steps: List[Dict[str, Any]]) -> List[JobPostingStep]:
         """전형 단계 추가"""
@@ -349,6 +404,23 @@ class JobPostingRepository(BaseRepository):
         except SQLAlchemyError as e:
             self._handle_database_error("모집 부문 추가", e)
 
+    def add_self_intro_questions(self, posting_id: int, questions: List[Dict[str, Any]]) -> List[JobPostingSelfIntro]:
+        """자기소개서 질문 추가"""
+        try:
+            question_objects = []
+            for question in questions:
+                question_obj = JobPostingSelfIntro(
+                    job_posting_id=posting_id,
+                    question_content=question.get('selfintroQstCont'),
+                    question_order=question.get('selfintroQstOrd')
+                )
+                question_objects.append(question_obj)
+                self.session.add(question_obj)
+            
+            self.session.flush()
+            return question_objects
+        except SQLAlchemyError as e:
+            self._handle_database_error("자기소개서 질문 추가", e)
 
 class TemplateRepository(BaseRepository):
     """템플릿 리포지토리"""

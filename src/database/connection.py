@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker, Session, scoped_session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import URL
 
-from .models import Base, FeedbackSession
+from .models import Base, FeedbackSession, JobPosting, JobPostingStep, JobPostingPosition, JobPostingSelfIntro, Company, JobCategory, JobPostingTemplate, CompanyWelfare, CompanyHistory, CompanyTalentCriteria
 from ..exceptions import DatabaseError
 from ..utils.logging import get_logger
 
@@ -96,7 +96,9 @@ class DatabaseManager:
             raise DatabaseError("데이터베이스가 초기화되지 않았습니다")
         
         try:
-            Base.metadata.drop_all(bind=self._engine, tables=[FeedbackSession.__table__])
+            # Base.metadata.drop_all(bind=self._engine, tables=[FeedbackSession.__table__])
+            # Base.metadata.drop_all(bind=self._engine, tables=[CompanyWelfare.__table__, CompanyHistory.__table__, CompanyTalentCriteria.__table__])
+            # Base.metadata.drop_all(bind=self._engine, tables=[Company.__table__, JobPostingStep.__table__, JobPostingPosition.__table__, JobPostingSelfIntro.__table__, JobPostingTemplate.__table__, JobPosting.__table__])
             Base.metadata.drop_all(bind=self._engine)
             logger.info("데이터베이스 테이블이 성공적으로 삭제되었습니다")
         except Exception as e:

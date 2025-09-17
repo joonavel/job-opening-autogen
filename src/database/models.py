@@ -63,8 +63,8 @@ class CompanyWelfare(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     
-    category_name: Mapped[str] = mapped_column(String(100), comment="복리후생 카테고리")
-    welfare_content: Mapped[str] = mapped_column(Text, comment="복리후생 내용")
+    category_name: Mapped[str] = mapped_column(String(100), nullable=True, comment="복리후생 카테고리")
+    welfare_content: Mapped[str] = mapped_column(Text, nullable=True, comment="복리후생 내용")
     
     # 관계
     company: Mapped["Company"] = relationship("Company", back_populates="welfare_items")
@@ -77,9 +77,9 @@ class CompanyHistory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="companies.id", ondelete="CASCADE"), nullable=False)
     
-    history_year: Mapped[str] = mapped_column(String(length=4), comment="연혁 년도")
-    history_month: Mapped[str] = mapped_column(String(length=2), comment="연혁 월")
-    history_content: Mapped[str] = mapped_column(Text, comment="연혁 내용")
+    history_year: Mapped[str] = mapped_column(String(length=4), nullable=True, comment="연혁 년도")
+    history_month: Mapped[str] = mapped_column(String(length=2), nullable=True, comment="연혁 월")
+    history_content: Mapped[str] = mapped_column(Text, nullable=True, comment="연혁 내용")
     
     # 관계
     company: Mapped["Company"] = relationship(argument="Company", back_populates="history_items")
@@ -115,7 +115,6 @@ class JobPosting(Base):
     # 기본 정보
     title: Mapped[str] = mapped_column(Text, nullable=False, comment="채용제목")
     emp_co_no: Mapped[str] = mapped_column(String(length=50), ForeignKey(column="companies.emp_co_no"), nullable=False)
-    job_category_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_categories.id"))
     
     # 채용 일정
     start_date: Mapped[date] = mapped_column(Date, comment="채용시작일자")
@@ -129,12 +128,12 @@ class JobPosting(Base):
     
     # 채용 상세 정보
     summary_content: Mapped[str] = mapped_column(Text, nullable=True, comment="모집부문 전체요약")
-    common_content: Mapped[str] = mapped_column(Text, comment="공통사항")
-    submit_documents: Mapped[str] = mapped_column(Text, comment="제출서류")
-    application_method: Mapped[str] = mapped_column(Text, comment="접수방법")
+    common_content: Mapped[str] = mapped_column(Text, nullable=True, comment="공통사항")
+    submit_documents: Mapped[str] = mapped_column(Text, nullable=True, comment="제출서류")
+    application_method: Mapped[str] = mapped_column(Text, nullable=True, comment="접수방법")
     announcement_date: Mapped[str] = mapped_column(Text, nullable=True, comment="합격자발표일")
-    inquiry_content: Mapped[str] = mapped_column(Text, comment="문의사항")
-    other_content: Mapped[str] = mapped_column(Text, comment="기타사항")
+    inquiry_content: Mapped[str] = mapped_column(Text, nullable=True, comment="문의사항")
+    other_content: Mapped[str] = mapped_column(Text, nullable=True, comment="기타사항")
     
     # 메타데이터
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(timezone.utc))
@@ -142,7 +141,7 @@ class JobPosting(Base):
     
     # 관계
     company: Mapped["Company"] = relationship("Company", back_populates="job_postings")
-    job_category: Mapped[Optional["JobCategory"]] = relationship("JobCategory", back_populates="job_postings")
+    job_categories: Mapped[List["JobCategory"]] = relationship("JobCategory", back_populates="job_posting")
     selection_steps: Mapped[List["JobPostingStep"]] = relationship("JobPostingStep", back_populates="job_posting", cascade="all, delete-orphan")
     recruitment_positions: Mapped[List["JobPostingPosition"]] = relationship("JobPostingPosition", back_populates="job_posting", cascade="all, delete-orphan")
     self_intro_questions: Mapped[List["JobPostingSelfIntro"]] = relationship("JobPostingSelfIntro", back_populates="job_posting", cascade="all, delete-orphan")
@@ -156,11 +155,12 @@ class JobCategory(Base):
     __tablename__ = "job_categories"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     jobs_code: Mapped[str] = mapped_column(String(length=10), unique=True, nullable=False, comment="직종 코드")
     jobs_name: Mapped[str] = mapped_column(String(length=200), nullable=False, comment="직종명")
     
     # 관계
-    job_postings: Mapped[List["JobPosting"]] = relationship("JobPosting", back_populates="job_category")
+    job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="job_categories")
 
 
 class JobPostingStep(Base):
@@ -170,7 +170,7 @@ class JobPostingStep(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    step_name: Mapped[str] = mapped_column(String(length=200), comment="전형단계명")
+    step_name: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="전형단계명")
     step_order: Mapped[int] = mapped_column(Integer, comment="전형단계 순서")
     schedule_content: Mapped[str] = mapped_column(Text, nullable=True, comment="전형단계일정내용")
     step_content: Mapped[str] = mapped_column(Text, nullable=True, comment="전형단계내용")
@@ -192,14 +192,14 @@ class JobPostingPosition(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
-    position_name: Mapped[str] = mapped_column(String(length=200), comment="채용모집명")
+    position_name: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="채용모집명")
     job_description: Mapped[str] = mapped_column(Text, comment="직무설명")
     work_region: Mapped[str] = mapped_column(String(length=200), comment="근무지")
-    career_requirement: Mapped[str] = mapped_column(String(length=100), comment="지원자격(경력)")
-    education_requirement: Mapped[str] = mapped_column(String(length=100), comment="지원자격(학력)")
-    other_requirements: Mapped[str] = mapped_column(Text, comment="지원자격(기타)")
-    recruitment_count: Mapped[str] = mapped_column(String(length=20), comment="모집인원수")
-    memo_content: Mapped[str] = mapped_column(Text, comment="비고")
+    career_requirement: Mapped[str] = mapped_column(String(length=100), nullable=True, comment="지원자격(경력)")
+    education_requirement: Mapped[str] = mapped_column(String(length=100), nullable=True, comment="지원자격(학력)")
+    other_requirements: Mapped[str] = mapped_column(Text, nullable=True, comment="지원자격(기타)")
+    recruitment_count: Mapped[str] = mapped_column(String(length=20), nullable=True, comment="모집인원수")
+    memo_content: Mapped[str] = mapped_column(Text, nullable=True, comment="비고")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="recruitment_positions")
@@ -213,7 +213,7 @@ class JobPostingSelfIntro(Base):
     job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     
     question_content: Mapped[str] = mapped_column(Text, nullable=True, comment="자기소개서 질문내용")
-    question_order: Mapped[int] = mapped_column(Integer, comment="질문 순서")
+    question_order: Mapped[int] = mapped_column(Integer, nullable=True, comment="질문 순서")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="self_intro_questions")

@@ -27,7 +27,7 @@ class OpenAPIDataLoader:
             return None
     
     @staticmethod
-    def load_company_data(company_detail_data: Dict[str, Any]) -> Optional[int]:
+    def load_company_data(company_detail_data: Dict[str, Any]) -> Optional[str]:
         """기업 상세 데이터를 데이터베이스에 로드"""
         try:
             root_data = company_detail_data.get('dhsOpenEmpHireInfoDetailRoot', {})
@@ -59,24 +59,24 @@ class OpenAPIDataLoader:
                 
                 # 복리후생 정보 추가
                 welfare_data = root_data.get('welfareList', {}).get('welfareListInfo', [])
-                if welfare_data and isinstance(welfare_data, list):
+                if welfare_data:
+                    if not isinstance(welfare_data, list):
+                        welfare_data = [welfare_data]
                     repo_manager.companies.add_welfare_items(company.id, welfare_data)
                 
                 # 연혁 정보 추가
                 history_data = root_data.get('historyList', {}).get('historyListInfo', [])
-                if history_data and isinstance(history_data, list):
+                if history_data:
+                    if not isinstance(history_data, list):
+                        history_data = [history_data]
                     repo_manager.companies.add_history_items(company.id, history_data)
                 
                 # 인재상 정보 추가
                 talent_data = root_data.get('rightPeopleList', {}).get('rightPeopleListInfo', {})
-                if talent_data and talent_data.get('psnrightKeywordNm', None):
-                    from .models import CompanyTalentCriteria
-                    talent_criteria = CompanyTalentCriteria(
-                        company_id=company.id,
-                        keyword=talent_data.get('psnrightKeywordNm', None),
-                        description=talent_data.get('psnrightDesc', None)
-                    )
-                    session.add(talent_criteria)
+                if talent_data:
+                    if not isinstance(talent_data, list):
+                        talent_data = [talent_data]
+                    repo_manager.companies.add_talent_criteria(company.id, talent_data)
                 
                 repo_manager.commit()
                 logger.info(f"기업 데이터 로드 완료: {company_data['emp_co_no']}")
@@ -92,27 +92,11 @@ class OpenAPIDataLoader:
         try:
             root_data = job_posting_detail_data.get('dhsOpenEmpInfoDetailRoot', {})
             
-            # 직종 정보 처리
-            job_category_id = None
-            # TODO: 추후 수정
-            # empJobsListInfo가 List[dict]일 경우도 있음
-            jobs_data = root_data.get('empJobsList', {}).get('empJobsListInfo', {})
-            if jobs_data:
-                with db_session_scope() as session:
-                    repo_manager = DataRepositoryManager(session)
-                    job_category = repo_manager.job_categories.create_or_get_category(
-                        jobs_data.get('jobsCd', ''),
-                        jobs_data.get('jobsCdKorNm', '')
-                    )
-                    job_category_id = job_category.id
-                    repo_manager.commit()
-            
             # 채용공고 데이터 구성
             posting_data = {
                 'emp_seq_no': root_data.get('empSeqno'),
                 'title': root_data.get('empWantedTitle'),
                 'emp_co_no': emp_co_no,
-                'job_category_id': job_category_id,
                 'start_date': OpenAPIDataLoader.parse_date(root_data.get('empWantedStdt')),
                 'end_date': OpenAPIDataLoader.parse_date(root_data.get('empWantedEndt')),
                 'employment_type': root_data.get('empWantedTypeNm'),
@@ -139,31 +123,34 @@ class OpenAPIDataLoader:
                 
                 job_posting = repo_manager.job_postings.create_job_posting(posting_data)
                 
+                # 직종 정보 추가
+                jobs_data = root_data.get('empJobsList', {}).get('empJobsListInfo', [])
+                if jobs_data:
+                    if not isinstance(jobs_data, list):
+                        jobs_data = [jobs_data]
+                    repo_manager.job_postings.add_job_category(job_posting.id, jobs_data)
+                
+                
                 # 전형 단계 추가
                 selection_steps = root_data.get('empSelsList', {}).get('empSelsListInfo', [])
-                if selection_steps and isinstance(selection_steps, list):
+                if selection_steps:
+                    if not isinstance(selection_steps, list):
+                        selection_steps = [selection_steps]
                     repo_manager.job_postings.add_selection_steps(job_posting.id, selection_steps)
                 
                 # 모집 부문 추가
                 recruitment_positions = root_data.get('empRecrList', {}).get('empRecrListInfo', [])
                 if recruitment_positions:
-                    # TODO: 추후 수정
-                    # empRecrListInfo가 List[dict]일 경우도 있음
-                    # 단일 객체인 경우 리스트로 변환
                     if not isinstance(recruitment_positions, list):
                         recruitment_positions = [recruitment_positions]
                     repo_manager.job_postings.add_recruitment_positions(job_posting.id, recruitment_positions)
                 
                 # 자기소개서 질문 추가
                 self_intro_data = root_data.get('empSelfintroList', {}).get('empSelsListInfo', {})
-                if self_intro_data and self_intro_data.get('selfintroQstCont', None):
-                    from .models import JobPostingSelfIntro
-                    self_intro = JobPostingSelfIntro(
-                        job_posting_id=job_posting.id,
-                        question_content=self_intro_data.get('selfintroQstCont', None),
-                        question_order=1
-                    )
-                    session.add(self_intro)
+                if self_intro_data:
+                    if not isinstance(self_intro_data, list):
+                        self_intro_data = [self_intro_data]
+                    repo_manager.job_postings.add_self_intro_questions(job_posting.id, self_intro_data)
                 
                 repo_manager.commit()
                 logger.info(f"채용공고 데이터 로드 완료: {posting_data['emp_seq_no']}")
