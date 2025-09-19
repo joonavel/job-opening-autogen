@@ -193,6 +193,14 @@ class LoggingSettings(BaseSettings):
     class Config:
         env_prefix = "LOG_"
 
+class OpenAPISettings(BaseSettings):
+    """Open API 관련 설정"""
+    
+    auth_key: str = Field(default="", description="Open API 인증키")
+    
+    class Config:
+        env_prefix = "OPENAPI_"
+
 
 class Settings(BaseSettings):
     """메인 설정 클래스"""
@@ -224,6 +232,7 @@ class Settings(BaseSettings):
     performance: PerformanceSettings = PerformanceSettings()
     features: FeatureFlags = FeatureFlags()
     logging: LoggingSettings = LoggingSettings()
+    openapi: OpenAPISettings = OpenAPISettings()
     
     # Paths
     @property
