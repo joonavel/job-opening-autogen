@@ -17,13 +17,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 # Copy project files
-COPY pyproject.toml uv.lock* README.md ./
+COPY pyproject.toml README.md ./
 
 # Create virtual environment and install dependencies with uv
-RUN uv venv /opt/venv
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN uv pip install -e .
+RUN if [ -f uv.lock ]; then uv sync --no-default-groups --frozen; else uv lock && uv sync --no-default-groups; fi
 
 # Production stage
 FROM python:3.11-slim
@@ -36,8 +33,8 @@ RUN apt-get update && apt-get install -y \
     && adduser --system --uid 1001 --gid 1001 appuser
 
 # Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
@@ -59,4 +56,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run FastAPI application
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["/app/.venv/bin/uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
