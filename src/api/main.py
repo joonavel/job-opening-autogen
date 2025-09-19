@@ -22,7 +22,7 @@ from config.settings import get_settings
 from ..exceptions import ValidationError
 from .routes import generate, companies, feedback, status
 from .middleware import LoggingMiddleware, ErrorHandlingMiddleware
-from src.database.data_loader import initialize_database_with_sample_data
+from src.database.data_loader import initialize_database_with_sample_data, initialize_database_with_openapi_data
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -37,7 +37,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"환경: {settings.environment}")
     logger.info(f"API 서버: {settings.api.host}:{settings.api.port}")
     logger.info("데이터베이스 초기화 시작")
-    initialize_database_with_sample_data()
+    if settings.openapi.auth_key:
+        logger.info("OpenAPI auth key 확인됨")
+        await initialize_database_with_openapi_data(settings.openapi.auth_key)
+    else:
+        initialize_database_with_sample_data()
     logger.info("데이터베이스 초기화 완료")
     yield
     

@@ -34,12 +34,12 @@ class Company(Base):
     map_coord_y: Mapped[float] = mapped_column(Float, comment="좌표:위도")
     
     # 웹 정보
-    logo_url: Mapped[str] = mapped_column(Text, comment="로고 URL")
-    homepage: Mapped[str] = mapped_column(String(500), comment="홈페이지")
+    logo_url: Mapped[str] = mapped_column(Text, nullable=True, comment="로고 URL")
+    homepage: Mapped[str] = mapped_column(String(500), nullable=True, comment="홈페이지")
     
     # 기업 소개
-    intro_summary: Mapped[str] = mapped_column(Text, comment="기업소개 요약")
-    intro_detail: Mapped[str] = mapped_column(Text, comment="기업소개 상세")
+    intro_summary: Mapped[str] = mapped_column(Text, nullable=True, comment="기업소개 요약")
+    intro_detail: Mapped[str] = mapped_column(Text, nullable=True, comment="기업소개 상세")
     main_business: Mapped[str] = mapped_column(Text, nullable=True, comment="주요사업")
     
     # 메타데이터
@@ -157,7 +157,7 @@ class JobCategory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_posting_id: Mapped[int] = mapped_column(Integer, ForeignKey(column="job_postings.id", ondelete="CASCADE"), nullable=False)
     jobs_code: Mapped[str] = mapped_column(String(length=10), unique=True, nullable=False, comment="직종 코드")
-    jobs_name: Mapped[str] = mapped_column(String(length=200), nullable=False, comment="직종명")
+    jobs_name: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="직종명")
     
     # 관계
     job_posting: Mapped["JobPosting"] = relationship("JobPosting", back_populates="job_categories")
@@ -194,7 +194,7 @@ class JobPostingPosition(Base):
     
     position_name: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="채용모집명")
     job_description: Mapped[str] = mapped_column(Text, comment="직무설명")
-    work_region: Mapped[str] = mapped_column(String(length=200), comment="근무지")
+    work_region: Mapped[str] = mapped_column(String(length=200), nullable=True, comment="근무지")
     career_requirement: Mapped[str] = mapped_column(String(length=100), nullable=True, comment="지원자격(경력)")
     education_requirement: Mapped[str] = mapped_column(String(length=100), nullable=True, comment="지원자격(학력)")
     other_requirements: Mapped[str] = mapped_column(Text, nullable=True, comment="지원자격(기타)")

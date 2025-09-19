@@ -43,7 +43,7 @@ class CompanyRepository(BaseRepository):
             company = Company(**company_data)
             self.session.add(company)
             self.session.flush()  # ID 할당을 위해
-            logger.info(f"기업 생성: {company.emp_co_no}")
+            # logger.info(f"기업 생성: {company.emp_co_no}")
             return company
         except SQLAlchemyError as e:
             self._handle_database_error("기업 생성", e)

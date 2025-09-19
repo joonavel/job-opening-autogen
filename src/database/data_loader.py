@@ -5,15 +5,92 @@ Open API 데이터 구조를 파싱하여 데이터베이스에 저장
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date
+import asyncio, aiohttp, requests, xmltodict
+# from tqdm.asyncio import tqdm
+
 from ..utils.logging import get_logger
 from .connection import db_session_scope
 from .repositories import DataRepositoryManager
+from contextlib import contextmanager
+from ..exceptions import DatabaseError
+from config.settings import get_settings
 
 logger = get_logger(__name__)
 
+@contextmanager
+def get_repositories():
+    """리포지토리 매니저 컨텍스트 매니저"""
+    with db_session_scope() as session:
+        repo_manager = DataRepositoryManager(session)
+        try:
+            yield repo_manager
+        except Exception as e:
+            repo_manager.rollback()
+            raise DatabaseError(f"트랜잭션 오류: {str(e)}")
+        else:
+            repo_manager.commit()
 
 class OpenAPIDataLoader:
     """Open API 데이터를 데이터베이스에 로드하는 클래스"""
+    def __init__(self, auth_key: str | None = None):
+        self.auth_key = auth_key
+        self.company_info_url = "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L31.do"
+        self.company_detail_url = "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L31.do"
+        self.job_opening_url = "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo210L21.do"
+        self.company_info_cnt = self.get_company_info_cnt()
+        self.job_opening_cnt = self.get_job_opening_cnt()
+        
+    @staticmethod
+    def get_emp_co_no(results) -> tuple[list, list]:
+        temp = []
+        failure_pages = []
+        for idx, result in enumerate(results):
+            info_list = result['dhsOpenEmpHireInfoList']
+            try:
+                if 'dhsOpenEmpHireInfo' in info_list:
+                    for item in info_list['dhsOpenEmpHireInfo']:
+                        temp.append(item['empCoNo'])
+                else:
+                    logger.warning(f"dhsOpenEmpHireInfo not found in result {idx}")
+                    logger.warning(f"result: {info_list}")
+                    failure_pages.append(idx+1)
+            except Exception as e:
+                logger.warning(f"result: {info_list}")
+                
+        return temp, failure_pages
+
+    @staticmethod
+    def get_emp_seq_no(results) -> tuple[list, list]:
+        temp = []
+        failure_pages = []
+        for idx, result in enumerate(results):
+            info_list = result['dhsOpenEmpInfoList']
+            try:
+                if 'dhsOpenEmpInfo' in info_list:
+                    for item in info_list['dhsOpenEmpInfo']:
+                        temp.append(item['empSeqno'])
+                else:
+                    logger.warning(f"dhsOpenEmpInfo not found in result {idx}")
+                    logger.warning(f"result: {info_list}")
+                    failure_pages.append(idx+1)
+            except Exception as e:
+                logger.warning(f"result: {info_list}")
+                
+        return temp, failure_pages
+
+    @staticmethod
+    def parsing_xml_to_dict(responses) -> tuple[list, list]:
+        temp = []
+        failure_ids = []
+        for idx, xml_data in enumerate(responses):
+            if xml_data:
+                dict_data = xmltodict.parse(xml_data)
+                temp.append(dict_data)
+            else:
+                logger.warning(f"{idx} th xml_data is None ")
+                logger.warning(f"xml_data: {xml_data}")
+                failure_ids.append(idx)
+        return temp, failure_ids
     
     @staticmethod
     def parse_date(date_str: Optional[str]) -> Optional[date]:
@@ -79,7 +156,7 @@ class OpenAPIDataLoader:
                     repo_manager.companies.add_talent_criteria(company.id, talent_data)
                 
                 repo_manager.commit()
-                logger.info(f"기업 데이터 로드 완료: {company_data['emp_co_no']}")
+                # logger.info(f"기업 데이터 로드 완료: {company_data['emp_co_no']}")
                 return company.emp_co_no
                 
         except Exception as e:
@@ -153,7 +230,7 @@ class OpenAPIDataLoader:
                     repo_manager.job_postings.add_self_intro_questions(job_posting.id, self_intro_data)
                 
                 repo_manager.commit()
-                logger.info(f"채용공고 데이터 로드 완료: {posting_data['emp_seq_no']}")
+                # logger.info(f"채용공고 데이터 로드 완료: {posting_data['emp_seq_no']}")
                 return job_posting.id
                 
         except Exception as e:
@@ -255,6 +332,233 @@ class OpenAPIDataLoader:
             OpenAPIDataLoader.load_job_posting_data(sample_job_posting, emp_co_no)
         
         logger.info("샘플 데이터 로드가 완료되었습니다.")
+        
+    def get_company_info_cnt(self) -> int:
+        company_info_params = {
+            "authKey": self.auth_key,
+            "callTp": "L",
+            "returnType": "XML",
+            "startPage": 1,
+            "display": 1,
+        }
+
+        response = requests.get(self.company_info_url, params=company_info_params)
+        xml_data = response.text
+        dict_data = xmltodict.parse(xml_data)
+
+        return int(dict_data['dhsOpenEmpHireInfoList']['total'])
+    
+    
+    
+    async def get_company_info_async(self, session : aiohttp.ClientSession, start_page) -> str | None:
+        
+        company_info_params = {
+            "authKey": self.auth_key,
+            "callTp": "L",
+            "returnType": "XML",
+            "startPage": start_page,
+            "display": 100,
+        }
+        try:
+            async with session.get(self.company_info_url, params=company_info_params) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return None
+        except Exception as e:
+            return None
+            
+
+    async def get_all_company_info_async(self,total_cnt):
+        
+        semaphore = asyncio.Semaphore(6)
+        task_cnt = (total_cnt - 1) // 100 + 1
+        
+        async def get_response_with_semaphore(session, start_page):
+            async with semaphore:
+                await asyncio.sleep(0.2)
+                return await self.get_company_info_async(session, start_page)
+        
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            coros = [get_response_with_semaphore(session, start_page) for start_page in range(1, task_cnt + 1)]
+            responses = await asyncio.gather(*coros)
+            
+        return responses
+
+    async def get_company_details_async(self, session, emp_co_no) -> str | None:
+
+        company_detail_params = {
+            "authKey": self.auth_key,
+            "returnType": "XML",
+            "callTp": "D",
+            "empCoNo": emp_co_no,
+        }
+        
+        try:
+            async with session.get(self.company_detail_url, params=company_detail_params) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return None
+        except Exception as e:
+            return None
+        
+    async def get_all_company_details_async(self, emp_co_no_list) -> list | None:
+        semaphore = asyncio.Semaphore(6)
+        coro_cnt = len(emp_co_no_list)
+        
+        async def get_response_with_semaphore(session, emp_co_no):
+            async with semaphore:
+                await asyncio.sleep(0.2)
+                return await self.get_company_details_async(session, emp_co_no)
+            
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            coros = [get_response_with_semaphore(session, emp_co_no) for emp_co_no in emp_co_no_list]
+            responses = await asyncio.gather(*coros)
+            
+        return responses
+    
+    def get_job_opening_cnt(self) -> int:
+        job_opening_params = {
+            "authKey": self.auth_key,
+            "returnType": "XML",
+            "callTp": "L",
+            "startPage": 1,
+            "display": 1
+        }
+
+        response = requests.get(self.job_opening_url, params=job_opening_params)
+        xml_data = response.text
+        dict_data = xmltodict.parse(xml_data)
+
+        return int(dict_data['dhsOpenEmpInfoList']['total'])
+    
+    async def get_job_opening_async(self, session, start_page) -> str | None:
+
+        job_opening_params = {
+            "authKey": self.auth_key,
+            "returnType": "XML",
+            "callTp": "L",
+            "startPage": start_page,
+            "display": 100
+        }
+        try:
+            async with session.get(self.job_opening_url, params=job_opening_params) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return None
+        except Exception as e:
+            return None
+
+    async def get_all_job_opening_async(self, total_cnt):
+        semaphore = asyncio.Semaphore(6)
+        task_cnt = (total_cnt - 1) // 100 + 1
+        
+        async def get_response_with_semaphore(session, start_page):
+            async with semaphore:
+                await asyncio.sleep(0.1)
+                return await self.get_job_opening_async(session, start_page)
+            
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            coros = [get_response_with_semaphore(session, start_page) for start_page in range(1, task_cnt + 1)]
+            responses = await asyncio.gather(*coros)
+            
+        return responses
+
+    async def get_job_opening_details_async(self, session, emp_seq_no) -> str | None:
+
+        job_detail_params = {
+            "authKey": self.auth_key,
+            "returnType": "XML",
+            "callTp": "D",
+            "empSeqno": emp_seq_no
+        }
+        
+        try:
+            async with session.get(self.job_opening_url, params=job_detail_params) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    return None
+        except Exception as e:
+            return None
+        
+    async def get_all_job_opening_details_async(self, emp_seq_no_list) -> list | None:
+        semaphore = asyncio.Semaphore(6)
+        coro_cnt = len(emp_seq_no_list)
+        
+        async def get_response_with_semaphore(session, emp_seq_no):
+            async with semaphore:
+                await asyncio.sleep(0.1)
+                return await self.get_job_opening_details_async(session, emp_seq_no)
+            
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            coros = [get_response_with_semaphore(session, emp_seq_no) for emp_seq_no in emp_seq_no_list]
+            responses = await asyncio.gather(*coros)
+            
+        return responses
+    
+    
+    async def load_openapi_company_data(self):
+        logger.info("OpenAPI 데이터 로드를 시작합니다.")
+        
+        company_info_responses = await self.get_all_company_info_async(self.company_info_cnt)
+        logger.info(f"기업 정보 요청 완료")
+        
+        company_info_dict, failure_ids = OpenAPIDataLoader.parsing_xml_to_dict(company_info_responses)
+        logger.info(f"기업 정보 파싱 완료 {len(company_info_dict)} 개의 배치 존재")
+        
+        emp_co_no_list, failure_pages = OpenAPIDataLoader.get_emp_co_no(company_info_dict)
+        logger.info(f"기업 번호 추출 완료 {len(emp_co_no_list)} 개의 기업 존재")
+        
+        company_details_responses = await self.get_all_company_details_async(emp_co_no_list)
+        logger.info(f"기업 상세 정보 요청 완료")
+        
+        company_details_dict, failure_ids = OpenAPIDataLoader.parsing_xml_to_dict(company_details_responses)
+        logger.info(f"기업 상세 정보 파싱 완료 {len(company_details_dict)} 개의 기업 존재")
+        
+        for company_detail_data in company_details_dict:
+            OpenAPIDataLoader.load_company_data(company_detail_data)
+        logger.info(f"기업 데이터 로드 완료")
+
+    async def load_openapi_job_opening_data(self):
+        logger.info("OpenAPI 채용공고 데이터 로드를 시작합니다.")
+        
+        job_opening_responses = await self.get_all_job_opening_async(self.job_opening_cnt)
+        logger.info(f"채용공고 정보 요청 완료")
+        
+        job_opening_dict, failure_ids = OpenAPIDataLoader.parsing_xml_to_dict(job_opening_responses)
+        logger.info(f"채용공고 정보 파싱 완료 {len(job_opening_dict)} 개의 배치 존재")
+        
+        emp_seq_no_list , failure_pages= OpenAPIDataLoader.get_emp_seq_no(job_opening_dict)
+        logger.info(f"채용공고 번호 추출 완료 {len(emp_seq_no_list)} 개의 채용공고 존재")
+        
+        job_opening_details_responses = await self.get_all_job_opening_details_async(emp_seq_no_list)
+        logger.info(f"채용공고 상세 정보 요청 완료")
+        
+        job_opening_details_dict, failure_ids = OpenAPIDataLoader.parsing_xml_to_dict(job_opening_details_responses)
+        logger.info(f"채용공고 상세 정보 파싱 완료 {len(job_opening_details_dict)} 개의 채용공고 존재")
+        
+        for job_opening_detail in job_opening_details_dict:
+            emp_co_no = None
+            if not 'empBusiNm' in job_opening_detail['dhsOpenEmpInfoDetailRoot']:
+                logger.warning(f"empBusiNm not found in job_opening_detail")
+                continue
+            company_name = job_opening_detail['dhsOpenEmpInfoDetailRoot']['empBusiNm']
+            with get_repositories() as repos:
+                company = repos.companies.search_companies(
+                    name_query=company_name,
+                    limit=3
+                )
+                if company:
+                    emp_co_no = company[0].emp_co_no
+                
+                if emp_co_no:
+                    OpenAPIDataLoader.load_job_posting_data(job_opening_detail, emp_co_no)
+                else:
+                    print(f"기업 정보를 찾을 수 없습니다: {company_name}")
+        logger.info(f"채용공고 데이터 로드 완료")
 
 
 def initialize_database_with_sample_data():
@@ -287,6 +591,43 @@ def initialize_database_with_sample_data():
         logger.error(f"데이터베이스 초기화 실패: {e}")
         raise
 
+async def initialize_database_with_openapi_data(auth_key: str | None = None):
+    """데이터베이스 초기화 및 OpenAPI 데이터 로드"""
+    from .connection import init_database, create_tables, test_db_connection, drop_tables
+    
+    try:
+        # 데이터베이스 연결 초기화
+        init_database()
+        logger.info("데이터베이스 연결이 초기화되었습니다.")
+        
+        # 연결 테스트
+        if not test_db_connection():
+            raise Exception("데이터베이스 연결 테스트 실패")
+        
+        # 기존 테이블 삭제
+        drop_tables()
+        logger.info("데이터베이스 테이블이 삭제되었습니다.")
+        
+        # 테이블 생성
+        create_tables()
+        logger.info("데이터베이스 테이블이 생성되었습니다.")
+        
+        # OpenAPI 데이터 로드
+        data_loader = OpenAPIDataLoader(auth_key)
+        await data_loader.load_openapi_company_data()
+        await data_loader.load_openapi_job_opening_data()
+        
+        logger.info("데이터베이스 초기화가 완료되었습니다.")
+        
+    except Exception as e:
+        logger.error(f"데이터베이스 초기화 실패: {e}")
+        raise
 
-if __name__ == "__main__":
-    initialize_database_with_sample_data()
+# if __name__ == "__main__":
+#     config = get_settings()
+#     if config.openapi.auth_key:
+#         logger.info("OpenAPI 데이터 로드를 시작합니다.")
+#         initialize_database_with_openapi_data(config.openapi.auth_key)
+#     else:
+#         logger.info("샘플 데이터 로드를 시작합니다.")
+#         initialize_database_with_sample_data()
