@@ -100,15 +100,19 @@ uv run streamlit run frontend/main.py
 - ✅ FastAPI + Streamlit UI/UX
 
 ### 2순위 기능 (추가 기능)
-- [] Intrinsic Hallucination 검증 Agent
-- ✅ Extrinsic Hallucination 검증 Agent
+- Hallucination 검증 및 수정 Agent
+- ✅ Intrinsic Hallucination 수정 기능
+- [] Extrinsic Hallucination 확인 및 수정 제안 기능
 
 ### 2순위 기능 (성능 최적화)
 - ✅ Docker 컨테이너화
 - ✅ Primary/Secondary LLM 전환 로직
+
+### 3순위 기능
 - [] 실시간 스트리밍 응답
 - [] Redis 프롬프트 캐싱
-- [] Circuit Breaker & Fallback 전략
+- [] Circuit Breaker
+- ✅ Fallback 전략
 
 ## 🎛️ 주요 엔드포인트
 
@@ -159,22 +163,5 @@ job-opening-autogen/
 - **헬스체크**: 모든 서비스의 상태 모니터링
 - **성능**: Redis 캐시 히트율 추적
 
-## 🧪 테스트 - 추후 추가 예정
-```bash
-# 단위 테스트
-uv run pytest tests/unit/
-
-# 통합 테스트
-uv run pytest tests/integration/
-
-# E2E 테스트
-uv run pytest tests/e2e/
-
-# 전체 테스트 (커버리지 포함)
-uv run pytest --cov=src
-
-# 코드 품질 검사
-uv run ruff check src/
-uv run black --check src/
-uv run mypy src/
-```
+## 🧪 테스트
+- 테스트 데이터셋 생성 후 추가 예정
