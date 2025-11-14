@@ -404,7 +404,7 @@ class OpenAPIDataLoader:
             return None
         
     async def get_all_company_details_async(self, emp_co_no_list) -> list | None:
-        semaphore = asyncio.Semaphore(6)
+        semaphore = asyncio.Semaphore(value=15)
         coro_cnt = len(emp_co_no_list)
         
         async def get_response_with_semaphore(session, emp_co_no):

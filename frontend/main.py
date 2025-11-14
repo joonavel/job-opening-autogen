@@ -148,6 +148,11 @@ def wait_for_workflow_completion(workflow_id: str, progress_placeholder, max_wai
     # 타임아웃
     with progress_placeholder.container():
         st.info("⏰ 워크플로우 완료 대기 시간 초과, 피드백 요청 여부 확인 진행")
+    if status.get("current_step") == "calling_hallucination_validation_agent":
+        print("환각 검증 에이전트가 피드백 대기 중")
+        st.session_state.feedback_submitted = False
+        st.session_state.feedback_wait_cnt = 0
+        st.rerun()
     return {"status": "timeout", "current_step": "check_feedback_sessions"}
 
 def main():
@@ -180,6 +185,7 @@ def main():
         # 활성 피드백 세션 확인 (현재 세션만)
         if st.session_state.started and not st.session_state.feedback_submitted:
             session = check_feedback_sessions(st.session_state.session_id)
+            print(f"check_feedback_sessions: {session}")
         else:
             session = None
             if st.session_state.feedback_submitted:
@@ -195,6 +201,14 @@ def main():
                 
             if session.get("status") == "expired":
                 st.info("피드백 세션이 만료되었습니다.")
+            
+            if session.get("status") == "completed":
+                time.sleep(4)
+                if st.session_state.feedback_wait_cnt < 3:
+                    st.session_state.feedback_wait_cnt += 1
+                    st.rerun()
+                else:
+                    st.info("피드백 대기 요청이 발생했으나, 완료된 피드백만 존재합니다.")
             
             if session.get("status") == "pending":
                 with st.expander(f"세션 {session['session_id']}", expanded=True):
@@ -248,7 +262,7 @@ def main():
         st.subheader("필수 요구사항")
         requirements = []
         for i in range(3):
-            req = st.text_input(f"요구사항 {i+1}", key=f"req_{i}", placeholder="예: Python 3년 이상 경험, Agent 개발 경험험")
+            req = st.text_input(f"요구사항 {i+1}", key=f"req_{i}", placeholder="예: Python 3년 이상 경험, Agent 개발 경험")
             if req:
                 requirements.append(req)
         
@@ -315,7 +329,11 @@ def main():
                 
                 with st.spinner("워크플로우 실행 중... (Human-in-the-Loop 포함)"):
                     current_status = wait_for_workflow_completion(workflow_id, progress_placeholder)
-                
+                    # if current_status.get("current_step") == "calling_hallucination_validation_agent":
+                    #     print("환각 검증 에이전트가 피드백 대기 중")
+                    #     st.session_state.feedback_submitted = False
+                    #     st.session_state.feedback_wait_cnt = 0
+                    #     st.rerun()
                 # 3단계: 결과 처리
                 if current_status.get("status") == "completed":
                     # 최종 결과를 세션에 저장 (임시로 상태 자체를 사용)
