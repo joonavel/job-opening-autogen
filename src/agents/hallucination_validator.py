@@ -10,6 +10,8 @@ LangGraph 기반 에이전트를 구현합니다.
 """
 
 import logging
+import uuid
+import requests
 import json
 from typing import Dict, Any, List, Literal, Optional, Tuple
 from datetime import datetime
@@ -28,32 +30,30 @@ from ..exceptions import ValidationError
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-
+API_BASE_URL = f"http://{settings.api.host}:{settings.api.port}/api/v1" # 요청 엔드포인트가 컨테이너 내부에 있으므로 localhost가 들어가도 된다.
 
 class HallucinationValidationRequest(BaseModel):
     """환각 검증 요청 모델"""
     job_posting_draft: JobPostingDraft = Field(..., description="검증할 채용공고 초안")
     structured_input: Dict[str, Any] = Field(..., description="구조화된 입력 데이터")
 
-class IntrinsicAnalysisResult(BaseModel):
-    """내재적 일관성 분석 결과"""
-    job_posting_draft: Optional[JobPostingDraft] = Field(description="검증 기준에 따라서 수정된 채용공고 초안, 개선 사항이 없다면 None 입력")
-    reasoning: str = Field(description="수정 결과에 대한 논리적인 이유")
-# class IntrinsicAnalysisResult(BaseModel):
-#     """내재적 일관성 분석 결과"""
-#     logical_contradictions: Optional[List[str]] = Field(description="논리적 모순들, 없다면 빈 리스트 입력")
-#     factual_inconsistencies: Optional[List[str]] = Field(description="사실 불일치들, 없다면 빈 리스트 입력")
-#     unsupported_claims: Optional[List[str]] = Field(description="근거 없는 주장들, 없다면 빈 리스트 입력")
-#     suggestions: Optional[List[str]] = Field(description="수정 제안, 없다면 빈 리스트 입력")
-#     requires_regeneration: bool = Field(description="재생성 필요 여부, 문제가 없다면 False, 재생성 필요하다면 True")
+class ProcessedResult(BaseModel):
+    """채용 공고내 환각 현상 탐지 및 제거 결과"""
+    job_posting_draft: Optional[JobPostingDraft] = Field(description="가이드라인에 따라서 수정된 채용공고 초안, 개선 사항이 없다면 None 입력")
+    reasoning: str = Field(description="수정 결과에 대한 근거")
 
 
 def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input: Dict[str, Any]) -> Tuple[str, str]:
     """내재적 검증을 위한 프롬프트 생성"""
     
-    system_prompt = f"""당신은 채용공고의 내재적 일관성을 검증한 뒤, 올바른 채용 공고로 첨삭하는 전문가입니다.
-사용자가 제시할 참조 정보 내용을 기반으로 채용공고 내용을 분석하여 논리적 모순, 사실 불일치, 근거 없는 주장이 있는지 검사하고 채용 공고를 수정해주세요.
+    system_prompt = f"""당신은 채용공고내 환각 현상을 탐지하고 제거하는 전문가입니다. 오직 환각 현상과 관련된 부분들만 첨삭하시오.
+환각 현상에는 내재적 환각, 외재적 환각 두 종류가 있습니다.
+내재적 환각은 채용 정보 및 기업 정보와 논리적으로 모순이 있거나 사실 불일치가 있는 환각을 의미합니다. 이 경우 채용공고를 바로 수정해주세요.
+외재적 환각은 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 환각을 의미합니다. 이 경우 주어진 tool을 사용하세요.
 사용자가 제시한 참조 정보에는 채용 정보와 기업 정보가 포함되어 있습니다.
+
+**tools**:
+- get_human_feedback:  외재적 환각이 있는 경우에만 사용하며, 한번에 여러 외재적 환각에 대한 human feedback들을 얻기 위한 도구
 
 **검증 대상 채용공고**:
     
@@ -70,18 +70,26 @@ def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input:
 지원 마감일: {job_posting.application_deadline}
 담당자 연락처: {job_posting.contact_email}
 
-**검증 기준**:
+**내재적 환각 검증 기준**:
 1. **논리적 모순**: 채용공고 내에서 상충하는 정보나 논리적으로 맞지 않는 내용
 2. **사실 불일치**: 사용자가 제시한 참조 정보와 내용이 다르거나 현실적이지 않은 내용
 3. **근거 없는 주장**: 구체적 근거나 설명 없이 과장된 표현이나 주장
+**외재적 환각 검증 기준**:
+- 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 내용
 
 **ReAct Guideline**:
-- 전체 후보들: 채용 공고 중 검증 기준에 어긋나는 텍스트들
-- 분석: 각 후보들이 검증 기준에 어긋나는지 아닌 지 그 이유
-- 대안: 각 후보별로 이들을 대체할 수 있는 대안, 검증 기준에 어긋나지 않는다면 생략, 적절한 대안이 없다면 '대안 없음' 명시
-- 대안 제시 이유: 각 대안 별로 해당 대안이 제시된 이유
+내재적 환각:
+- 내재적 환각 후보들: 채용 공고 내에서 검증 기준에 어긋나는 텍스트들
+- 분석: 각 내재적 환각 후보들이 어떤 기준에 속하는지 분류
+- 대안: 각 내재적 환각 후보별로 이들을 대체할 수 있는 대안 제시, 검증 기준에 어긋나지 않는다면 생략, 적절한 대안이 없다면 '대안 없음' 명시
+- 대안 제시 이유: 각 내재적 환각 후보별로 해당 대안이 제시된 이유를 간단히 작성
+외재적 환각:
+- 외재적 환각 후보들: 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 모든 텍스트들
+- Action: get_human_feedback tool을 사용하여 human feedback 얻기 
 
 **참고사항**:
+- Do not call tool parallelly.
+- 외재적 환각의 경우 한번에 여러 후보들에 대해서 get_human_feedback tool을 사용하여 human feedback을 얻어주세요.
 - generate_structured_response 단계에서 사용하여 채용 공고를 수정해주세요.
 - 채용 공고를 수정할 때 '대안 없음'이 명시되어 있다면, 해당 필드는 비워도 됩니다.
 """
@@ -92,6 +100,20 @@ def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input:
     
     return system_prompt, user_prompt
 
+
+@tool(response_format="content")
+def get_human_feedback(question: List[str]) -> Dict[str, Any]:
+    """외재적 환각이 있는 경우 이후 어떻게 할지 human feedback을 얻기 위한 도구 입니다.
+    각 내용에 대한 설명과 적용 여부에 대한 질문을 제시하면 사용자는 해당 내용을 어떻게 할지에 대한 답변을 제시합니다.
+
+    Args:
+        question (List[str]): 외재적 환각이 있는 내용에 대한 간단한 설명과 적용 여부에 대한 질문들
+
+    Returns:
+        Dict[str, Any]: 해당 내용을 어떻게 할지에 대한 human feedback
+    """
+    value = interrupt({"question": question})  # 중단하고 인간 입력 기다림
+    return {"human_feedback": value}
 
 def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationRequest, thread_id: str) -> Tuple[JobPostingDraft, Dict[str, Any]]:
     """내재적 일관성 분석"""
@@ -110,32 +132,150 @@ def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationReq
         memory = MemorySaver()
         agent_executor = create_react_agent(model=llm,
                                             prompt=system_prompt,
-                                            tools=[],
-                                            response_format=IntrinsicAnalysisResult,
+                                            tools=[get_human_feedback],
+                                            response_format=ProcessedResult,
                                             checkpointer=memory,
                                             name="hallucination_validation_agent")
         config = {"configurable": {"thread_id": thread_id}}
         
         response = agent_executor.invoke({"messages": [{"role": "user", "content": user_prompt}]},
                                         config=config,
+                                        interrupt_after=["tools"],
                                         stream_mode="values")
-        structured_response = response.get("structured_response", None)
-        metadata = {"thread_id": thread_id, "generated_by": model, "generation_time": time.time() - start_time, "reasoning": structured_response.reasoning}
         
-        if structured_response is None:
-            raise ValidationError("환각 검증 결과를 받지 못했습니다")
-        job_posting_draft = structured_response.job_posting_draft
-        if job_posting_draft is None:
-            return job_posting, metadata
+        if "structured_response" in response:
+            structured_response = response["structured_response"]
+            metadata = {"thread_id": thread_id, "generated_by": model, "generation_time": time.time() - start_time, "reasoning": structured_response.reasoning}
         
-        logger.info(f"환각 검증 완료")
-        return job_posting_draft, metadata
+            if structured_response is None:
+                raise ValidationError("환각 검증 결과를 받지 못했습니다")
+            job_posting_draft = structured_response.job_posting_draft
+            if job_posting_draft is None:
+                return job_posting, metadata
+        
+            logger.info(f"환각 검증 완료")
+            return job_posting_draft, metadata
+        logger.info(f"환각 검증 중간 결과: {response}")
+        
+        cnt = 0
+        while "structured_response" not in response:
+            cnt += 1
+            questions = response['__interrupt__'][0].value['question']
+            
+            # API를 통한 Human-in-the-Loop 피드백 처리
+            human_feedbacks = get_human_feedback_via_api(questions, thread_id)
+            
+            qa_pairs = [f"Q.{q}\nA.{hf}" for q, hf in zip(questions, human_feedbacks)]
+            response = agent_executor.invoke(Command(resume='\n\n'.join(qa_pairs)), config=config)
+            if cnt > 5:
+                break
+            
+            structured_response = response.get("structured_response", None)
+            if structured_response is None:
+                raise ValidationError("환각 검증 결과를 받지 못했습니다")
+            
+            metadata = {"thread_id": thread_id, "generated_by": model, "generation_time": time.time() - start_time, "reasoning": structured_response.reasoning}
+            validated_job_posting = structured_response.job_posting_draft
+            if validated_job_posting is None:
+                return job_posting, metadata
+            
+            return validated_job_posting, metadata
         
     except Exception as e:
         logger.error(f"내재적 분석 실패: {str(e)}")
         metadata = {"error": str(e), "generation_time": time.time() - start_time, "reasoning": "환각 검증 실패"}
         # 입력된 JobPostingDraft 반환 (보수적 접근)
         return job_posting, metadata
+    
+def get_human_feedback_via_api(questions: List[str], thread_id: str) -> List[str]:
+    """
+    API를 통한 Human-in-the-Loop 피드백 처리
+    
+    Args:
+        questions: 사용자에게 물어볼 질문들
+        thread_id: 워크플로우 thread ID
+        
+    Returns:
+        사용자가 제공한 답변들
+    """
+    try:
+        # 1. 피드백 세션 생성
+        logger.info(f"Creating feedback session for thread: {thread_id}")
+        logger.info(f"API_BASE_URL: {API_BASE_URL}")
+        
+        session_response = requests.post(
+            f"{API_BASE_URL}/feedback/sessions",
+            json={
+                "session_type": "hallucination_detected",
+                "template_id": str(uuid.uuid4()),
+                "feedback_request": {
+                    "questions": questions,
+                    "thread_id": thread_id,
+                }
+            },
+            timeout=30
+        )
+        
+        if session_response.status_code != 200:
+            raise ValidationError(f"피드백 세션 생성 실패: {session_response.text}")
+        
+        session_data = session_response.json()
+        session_id = session_data["session_id"]
+        
+        logger.info(f"Feedback session created: {session_id}")
+        
+        # 2. 사용자 응답 대기 (polling)
+        max_wait_time = settings.human_loop.session_timeout
+        poll_interval = 2  # 2초마다 체크
+        waited_time = 0
+        
+        while waited_time < max_wait_time:
+            logger.info(f"Waiting for user feedback... ({waited_time}s/{max_wait_time}s)")
+            
+            status_response = requests.get(
+                f"{API_BASE_URL}/feedback/sessions/{session_id}",
+                timeout=10
+            )
+            
+            if status_response.status_code != 200:
+                raise ValidationError(f"피드백 세션 조회 실패: {status_response.text}")
+            
+            session_status = status_response.json()
+            
+            if session_status["status"] == "completed":
+                # 사용자 피드백 받음
+                user_feedback = session_status.get("user_feedback", [])
+                
+
+                if not user_feedback:
+                    # 구체적인 응답이 없으면 기본 응답 처리
+                    user_feedback = ["삭제해주세요"] * len(questions)
+                
+                logger.info(f"User feedback received: {len(user_feedback)} responses")
+                return user_feedback
+                
+            elif session_status["status"] == "expired":
+                raise ValidationError("피드백 세션이 만료되었습니다")
+            elif session_status["status"] == "cancelled":
+                raise ValidationError("사용자가 피드백 세션을 취소했습니다")
+            
+            # 계속 대기
+            time.sleep(poll_interval)
+            waited_time += poll_interval
+        
+        # 타임아웃 발생
+        raise ValidationError(f"피드백 대기 시간 초과 ({max_wait_time}초)")
+        
+    except requests.RequestException as e:
+        logger.error(f"API 요청 실패: {e}")
+        # 네트워크 오류 시 기본 응답으로 폴백
+        logger.warning("네트워크 오류로 인해 기본 응답으로 진행합니다")
+        return ["문제를 수정했습니다"] * len(questions)
+        
+    except Exception as e:
+        logger.error(f"피드백 처리 중 오류: {e}")
+        # 기본 응답으로 폴백
+        return ["문제를 수정했습니다"] * len(questions)
 
 # def call_hallucination_validation_agent(state: ValidationAgentState) -> Command[Literal["route_decision", "__end__"]]:
 #     """

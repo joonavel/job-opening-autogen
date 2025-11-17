@@ -255,7 +255,7 @@ class FeedbackSession(Base):
     __tablename__ = "feedback_sessions"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    session_id: Mapped[str] = mapped_column(String(50), default=str(uuid.uuid4()), unique=True, index=True, comment="세션 고유 ID")
+    session_id: Mapped[str] = mapped_column(String(50), default=str(uuid.uuid4()), index=True, comment="세션 고유 ID") # 세션당 여러 피드백 요청 발생 가능하여 unique=False
     
     # 연관 템플릿
     template_id: Mapped[str] = mapped_column(String(50), nullable=False, comment="관련 템플릿 ID")

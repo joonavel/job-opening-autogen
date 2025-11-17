@@ -157,8 +157,10 @@ async def submit_feedback(
             )
         
         # 데이터베이스에서 세션 조회 및 업데이트
+        # 최신 세션 조회(get_feedback_session 함수와 동일해야함)
         session_db = db.query(FeedbackSessionDB).filter(
-            FeedbackSessionDB.session_id == session_str
+            FeedbackSessionDB.session_id == session_str,
+            FeedbackSessionDB.status == "pending"
         ).first()
         
         if not session_db:
@@ -227,9 +229,12 @@ async def get_feedback_session(
             )
         
         # 데이터베이스에서 조회
+        # 최신 세션 조회
         session_db = db.query(FeedbackSessionDB).filter(
-            FeedbackSessionDB.session_id == session_str
+            FeedbackSessionDB.session_id == session_str,
+            FeedbackSessionDB.status == "pending"
         ).first()
+        logger.info(f"session_db 조회 결과: {session_db}")
         
         if not session_db:
             raise HTTPException(

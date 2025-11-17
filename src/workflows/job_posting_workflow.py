@@ -574,6 +574,18 @@ def generate_draft(state: WorkflowState) -> WorkflowState:
         state["status"] = "error"
     return state
 
+def update_hallucination_validation_status(state: WorkflowState) -> WorkflowState:
+    """
+    워크 플로우 내 서브 에이전트를 호출하는 노드가 있을 경우 외부에서 워크플로우의 state를 확인할 시 노드내의 변화가 반영되지 않으므로,
+    현재 단계를 업데이트하는 노드를 추가한다.
+    """
+    logger.info(f"워크플로우 {state['workflow_id']}: 환각 검증 상태 업데이트 시작")
+    state["current_step"] = "calling_hallucination_validation_agent"
+    state["status"] = "running"
+    state["step_count"] = state.get("step_count", 0) + 1
+    state["last_updated"] = datetime.now()
+    return state
+
 def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
     """
     5단계: 환각 검증 에이전트 호출
@@ -595,7 +607,7 @@ def call_hallucination_validation_agent(state: WorkflowState) -> WorkflowState:
         if not job_posting_draft:
             raise WorkflowError("생성된 채용공고 초안이 없습니다")
 
-        thread_id = state["workflow_id"] + "_HV"
+        thread_id = state["workflow_id"]
 
         result = analyze_intrinsic_consistency_with_agent(
             HallucinationValidationRequest(job_posting_draft=job_posting_draft,
@@ -648,7 +660,7 @@ class JobPostingWorkflow:
         self.graph.add_node("retrieve_company_data", retrieve_company_data)
         self.graph.add_node("structure_input", structure_input)
         self.graph.add_node("generate_draft", generate_draft)
-        
+        self.graph.add_node("update_hallucination_validation_status", update_hallucination_validation_status)
         # 검증 에이전트 노드 추가
         self.graph.add_node("call_sensitivity_validation_agent", call_sensitivity_validation_agent)
         self.graph.add_node("call_hallucination_validation_agent", call_hallucination_validation_agent)
@@ -659,7 +671,8 @@ class JobPostingWorkflow:
         self.graph.add_edge("call_sensitivity_validation_agent", "retrieve_company_data")
         self.graph.add_edge("retrieve_company_data", "structure_input")
         self.graph.add_edge("structure_input", "generate_draft")
-        self.graph.add_edge("generate_draft", "call_hallucination_validation_agent")
+        self.graph.add_edge("generate_draft", "update_hallucination_validation_status")
+        self.graph.add_edge("update_hallucination_validation_status", "call_hallucination_validation_agent")
         self.graph.add_edge("call_hallucination_validation_agent", END)
         
         logger.info("LangGraph 워크플로우 구성 완료 (6단계: 자연어 구조화 -> 민감성 검증 -> 기업 검색 -> 입력 구조화 -> 채용공고 생성 -> 환각 검증)")
