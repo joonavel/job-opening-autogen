@@ -102,7 +102,7 @@ uv run streamlit run frontend/main.py
 ### 2순위 기능 (추가 기능)
 - Hallucination 검증 및 수정 Agent
 - ✅ Intrinsic Hallucination 수정 기능
-- [] Extrinsic Hallucination 확인 및 수정 제안 기능
+- ✅ Extrinsic Hallucination 확인 및 수정 제안 기능
 
 ### 2순위 기능 (성능 최적화)
 - ✅ Docker 컨테이너화

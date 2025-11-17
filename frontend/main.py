@@ -208,7 +208,7 @@ def main():
                     st.session_state.feedback_wait_cnt += 1
                     st.rerun()
                 else:
-                    st.info("피드백 대기 요청이 발생했으나, 완료된 피드백만 존재합니다.")
+                    st.info("피드백 대기 요청을 받았으나, 현재 완료된 피드백만 존재합니다.")
             
             if session.get("status") == "pending":
                 with st.expander(f"세션 {session['session_id']}", expanded=True):
@@ -230,10 +230,10 @@ def main():
                             response = st.text_area(
                                 f"질문 {i+1}에 대한 답변:",
                                 key=f"feedback_{session['session_id']}_{i}",
-                                placeholder="어떻게 수정하시겠습니까?"
+                                placeholder="어떻게 수정하시겠습니까?",
+                                value=None,
                             )
                             feedback_responses.append(response)
-                        
                         # 제출 버튼
                         if st.button(f"피드백 제출", key=f"submit_{session['session_id']}"):
                             if all(feedback_responses):

@@ -37,23 +37,23 @@ class HallucinationValidationRequest(BaseModel):
     job_posting_draft: JobPostingDraft = Field(..., description="검증할 채용공고 초안")
     structured_input: Dict[str, Any] = Field(..., description="구조화된 입력 데이터")
 
-class IntrinsicAnalysisResult(BaseModel):
-    """내재적 일관성 분석 결과"""
-    job_posting_draft: Optional[JobPostingDraft] = Field(description="검증 기준에 따라서 수정된 채용공고 초안, 개선 사항이 없다면 None 입력")
-    reasoning: str = Field(description="수정 결과에 대한 논리적인 이유")
+class ProcessedResult(BaseModel):
+    """채용 공고내 환각 현상 탐지 및 제거 결과"""
+    job_posting_draft: Optional[JobPostingDraft] = Field(description="가이드라인에 따라서 수정된 채용공고 초안, 개선 사항이 없다면 None 입력")
+    reasoning: str = Field(description="수정 결과에 대한 근거")
 
 
 def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input: Dict[str, Any]) -> Tuple[str, str]:
     """내재적 검증을 위한 프롬프트 생성"""
     
-    system_prompt = f"""당신은 채용공고내 환각 현상을 검증하고, 올바른 채용 공고로 첨삭하는 전문가입니다.
-환각에는 내재적 환각, 외재적 환각 두 종류가 있습니다.
+    system_prompt = f"""당신은 채용공고내 환각 현상을 탐지하고 제거하는 전문가입니다. 오직 환각 현상과 관련된 부분들만 첨삭하시오.
+환각 현상에는 내재적 환각, 외재적 환각 두 종류가 있습니다.
 내재적 환각은 채용 정보 및 기업 정보와 논리적으로 모순이 있거나 사실 불일치가 있는 환각을 의미합니다. 이 경우 채용공고를 바로 수정해주세요.
 외재적 환각은 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 환각을 의미합니다. 이 경우 주어진 tool을 사용하세요.
 사용자가 제시한 참조 정보에는 채용 정보와 기업 정보가 포함되어 있습니다.
 
 **tools**:
-- get_human_feedback:  외재적 환각이 있는 경우에만 사용하며, 해당 내용에 대한 human feedback을 얻기 위한 도구
+- get_human_feedback:  외재적 환각이 있는 경우에만 사용하며, 한번에 여러 외재적 환각에 대한 human feedback들을 얻기 위한 도구
 
 **검증 대상 채용공고**:
     
@@ -70,18 +70,22 @@ def create_intrinsic_validation_prompt(job_posting: JobPostingDraft, user_input:
 지원 마감일: {job_posting.application_deadline}
 담당자 연락처: {job_posting.contact_email}
 
-**검증 기준**:
+**내재적 환각 검증 기준**:
 1. **논리적 모순**: 채용공고 내에서 상충하는 정보나 논리적으로 맞지 않는 내용
 2. **사실 불일치**: 사용자가 제시한 참조 정보와 내용이 다르거나 현실적이지 않은 내용
 3. **근거 없는 주장**: 구체적 근거나 설명 없이 과장된 표현이나 주장
-4. **외재적 환각**: 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 내용
+**외재적 환각 검증 기준**:
+- 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 내용
 
 **ReAct Guideline**:
+내재적 환각:
 - 내재적 환각 후보들: 채용 공고 내에서 검증 기준에 어긋나는 텍스트들
-- 외재적 환각 후보들: 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 텍스트들
 - 분석: 각 내재적 환각 후보들이 어떤 기준에 속하는지 분류
 - 대안: 각 내재적 환각 후보별로 이들을 대체할 수 있는 대안 제시, 검증 기준에 어긋나지 않는다면 생략, 적절한 대안이 없다면 '대안 없음' 명시
 - 대안 제시 이유: 각 내재적 환각 후보별로 해당 대안이 제시된 이유를 간단히 작성
+외재적 환각:
+- 외재적 환각 후보들: 채용 정보 및 기업 정보로 모순이나 사실 불일치를 확인할 수 없는 모든 텍스트들
+- Action: get_human_feedback tool을 사용하여 human feedback 얻기 
 
 **참고사항**:
 - Do not call tool parallelly.
@@ -129,7 +133,7 @@ def analyze_intrinsic_consistency_with_agent(request: HallucinationValidationReq
         agent_executor = create_react_agent(model=llm,
                                             prompt=system_prompt,
                                             tools=[get_human_feedback],
-                                            response_format=IntrinsicAnalysisResult,
+                                            response_format=ProcessedResult,
                                             checkpointer=memory,
                                             name="hallucination_validation_agent")
         config = {"configurable": {"thread_id": thread_id}}
