@@ -350,7 +350,7 @@ class OpenAPIDataLoader:
     
     
     
-    async def get_company_info_async(self, session : aiohttp.ClientSession, start_page) -> str | None:
+    async def get_company_info_async(self, session : aiohttp.ClientSession, start_page, max_retries: int=3, retry_delay: float=0.5) -> str | None:
         
         company_info_params = {
             "authKey": self.auth_key,
@@ -359,15 +359,32 @@ class OpenAPIDataLoader:
             "startPage": start_page,
             "display": 100,
         }
-        try:
-            async with session.get(self.company_info_url, params=company_info_params) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    return None
-        except Exception as e:
-            return None
-            
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with session.get(self.company_info_url, params=company_info_params) as response:
+                    if response.status == 200:
+                        text = await response.text()
+                        try:
+                            result = xmltodict.parse(text)
+                            if 'dhsOpenEmpHireInfo' in result['dhsOpenEmpHireInfoList']:
+                                return text
+                            else:
+                                logger.warning(f"[Page {start_page}] Data validation failed. Retrying ({attempt}/{max_retries})...")
+                                await asyncio.sleep(retry_delay)
+                        except Exception as e:
+                            logger.warning(f"[Page {start_page}] XML parsing failed. Retrying ({attempt}/{max_retries})...")
+                            await asyncio.sleep(retry_delay)
+                    else:
+                        # 200이 아닌 경우 로그 출력 및 대기
+                        logger.warning(f"[Page {start_page}] Request failed with status {response.status}. Retrying ({attempt}/{max_retries})...")
+                        await asyncio.sleep(retry_delay)
+            except Exception as e:
+                logger.warning(f"[Page {start_page}] Error occurred: {e}. Retrying ({attempt}/{max_retries})...")
+                await asyncio.sleep(retry_delay)
+                
+        # 모든 재시도가 실패했을 경우
+        logger.warning(f"[Page {start_page}] Failed after {max_retries} attempts.")
+        return None
 
     async def get_all_company_info_async(self,total_cnt):
         
@@ -377,7 +394,7 @@ class OpenAPIDataLoader:
         async def get_response_with_semaphore(session, start_page):
             async with semaphore:
                 await asyncio.sleep(0.2)
-                return await self.get_company_info_async(session, start_page)
+                return await self.get_company_info_async(session, start_page, 3, 0.5)
         
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             coros = [get_response_with_semaphore(session, start_page) for start_page in range(1, task_cnt + 1)]
@@ -385,7 +402,7 @@ class OpenAPIDataLoader:
             
         return responses
 
-    async def get_company_details_async(self, session, emp_co_no) -> str | None:
+    async def get_company_details_async(self, session, emp_co_no, max_retries: int=3, retry_delay: float=0.5) -> str | None:
 
         company_detail_params = {
             "authKey": self.auth_key,
@@ -393,24 +410,28 @@ class OpenAPIDataLoader:
             "callTp": "D",
             "empCoNo": emp_co_no,
         }
-        
-        try:
-            async with session.get(self.company_detail_url, params=company_detail_params) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    return None
-        except Exception as e:
-            return None
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with session.get(self.company_detail_url, params=company_detail_params) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    else:
+                        logger.warning(f"[EmpCoNo {emp_co_no}] Request failed with status {response.status}. Retrying ({attempt}/{max_retries})...")
+                        await asyncio.sleep(retry_delay)
+            except Exception as e:
+                logger.warning(f"[EmpCoNo {emp_co_no}] Error occurred: {e}. Retrying ({attempt}/{max_retries})...")
+                await asyncio.sleep(retry_delay)
+        logger.warning(f"[EmpCoNo {emp_co_no}] Failed after {max_retries} attempts.")
+        return None
         
     async def get_all_company_details_async(self, emp_co_no_list) -> list | None:
-        semaphore = asyncio.Semaphore(value=15)
+        semaphore = asyncio.Semaphore(value=6)
         coro_cnt = len(emp_co_no_list)
         
         async def get_response_with_semaphore(session, emp_co_no):
             async with semaphore:
                 await asyncio.sleep(0.2)
-                return await self.get_company_details_async(session, emp_co_no)
+                return await self.get_company_details_async(session, emp_co_no, 3, 0.5)
             
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             coros = [get_response_with_semaphore(session, emp_co_no) for emp_co_no in emp_co_no_list]
@@ -433,7 +454,7 @@ class OpenAPIDataLoader:
 
         return int(dict_data['dhsOpenEmpInfoList']['total'])
     
-    async def get_job_opening_async(self, session, start_page) -> str | None:
+    async def get_job_opening_async(self, session, start_page, max_retries: int=3, retry_delay: float=0.5) -> str | None:
 
         job_opening_params = {
             "authKey": self.auth_key,
@@ -442,14 +463,19 @@ class OpenAPIDataLoader:
             "startPage": start_page,
             "display": 100
         }
-        try:
-            async with session.get(self.job_opening_url, params=job_opening_params) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    return None
-        except Exception as e:
-            return None
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with session.get(self.job_opening_url, params=job_opening_params) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    else:
+                        logger.warning(f"[Page {start_page}] Request failed with status {response.status}. Retrying ({attempt}/{max_retries})...")
+                        await asyncio.sleep(retry_delay)
+            except Exception as e:
+                logger.warning(f"[Page {start_page}] Error occurred: {e}. Retrying ({attempt}/{max_retries})...")
+                await asyncio.sleep(retry_delay)
+        logger.warning(f"[Page {start_page}] Failed after {max_retries} attempts.")
+        return None
 
     async def get_all_job_opening_async(self, total_cnt):
         semaphore = asyncio.Semaphore(6)
@@ -458,7 +484,7 @@ class OpenAPIDataLoader:
         async def get_response_with_semaphore(session, start_page):
             async with semaphore:
                 await asyncio.sleep(0.1)
-                return await self.get_job_opening_async(session, start_page)
+                return await self.get_job_opening_async(session, start_page, 3, 0.5)
             
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             coros = [get_response_with_semaphore(session, start_page) for start_page in range(1, task_cnt + 1)]
@@ -466,7 +492,7 @@ class OpenAPIDataLoader:
             
         return responses
 
-    async def get_job_opening_details_async(self, session, emp_seq_no) -> str | None:
+    async def get_job_opening_details_async(self, session, emp_seq_no, max_retries: int=3, retry_delay: float=0.5) -> str | None:
 
         job_detail_params = {
             "authKey": self.auth_key,
@@ -475,14 +501,19 @@ class OpenAPIDataLoader:
             "empSeqno": emp_seq_no
         }
         
-        try:
-            async with session.get(self.job_opening_url, params=job_detail_params) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    return None
-        except Exception as e:
-            return None
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with session.get(self.job_opening_url, params=job_detail_params) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    else:
+                        logger.warning(f"[EmpSeqno {emp_seq_no}] Request failed with status {response.status}. Retrying ({attempt}/{max_retries})...")
+                        await asyncio.sleep(retry_delay)
+            except Exception as e:
+                logger.warning(f"[EmpSeqno {emp_seq_no}] Error occurred: {e}. Retrying ({attempt}/{max_retries})...")
+                await asyncio.sleep(retry_delay)
+        logger.warning(f"[EmpSeqno {emp_seq_no}] Failed after {max_retries} attempts.")
+        return None
         
     async def get_all_job_opening_details_async(self, emp_seq_no_list) -> list | None:
         semaphore = asyncio.Semaphore(6)
@@ -491,7 +522,7 @@ class OpenAPIDataLoader:
         async def get_response_with_semaphore(session, emp_seq_no):
             async with semaphore:
                 await asyncio.sleep(0.1)
-                return await self.get_job_opening_details_async(session, emp_seq_no)
+                return await self.get_job_opening_details_async(session, emp_seq_no, 3, 0.5)
             
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             coros = [get_response_with_semaphore(session, emp_seq_no) for emp_seq_no in emp_seq_no_list]
